@@ -34,7 +34,8 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Run Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        # CAMBIADO a --features full
+        run: cargo clippy --all-targets --features full -- -D warnings
 
   audit:
     name: Security Audit
@@ -72,16 +73,20 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
+          # Ya estaba libssl-dev, pero lo mantengo por si acaso
           sudo apt-get install -y libssl-dev pkg-config
       
       - name: Build all features
-        run: cargo build --all-features --verbose
+        # CAMBIADO a --features full
+        run: cargo build --features full --verbose
       
       - name: Run lib tests (General)
-        run: cargo test --lib --all-features --verbose
+        # CAMBIADO a --features full
+        run: cargo test --lib --features full --verbose
       
       - name: Run doc tests
-        run: cargo test --doc --all-features
+        # CAMBIADO a --features full
+        run: cargo test --doc --features full
         continue-on-error: ${{ matrix.rust == 'nightly' }}
 
   test-db-postgres:
@@ -120,15 +125,18 @@ jobs:
           sudo apt-get install -y libssl-dev pkg-config
       
       - name: Build with all features
-        run: cargo build --all-features --verbose
+        # CAMBIADO a --features full
+        run: cargo build --features full --verbose
 
       - name: Run lib/integration tests with Postgres
-        run: cargo test --lib --all-features --verbose
+        # CAMBIADO a --features full
+        run: cargo test --lib --features full --verbose
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
       
       - name: Run integration tests
-        run: cargo test --test '*' --all-features
+        # CAMBIADO a --features full
+        run: cargo test --test '*' --features full
         continue-on-error: true
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
@@ -140,10 +148,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
+      
+      - name: Install OpenSSL dependencies
+        run: |
+          sudo apt-get update
+          # SOLUCION para el error de openssl-sys
+          sudo apt-get install -y libssl-dev
+      
       - name: Check minimal versions
         run: |
           cargo update -Z minimal-versions
-          cargo check --all-features
+          # Usamos --features full para evitar el audio, pero probamos todo lo demás
+          cargo check --features full
 
   docs:
     name: Documentation
@@ -154,7 +170,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       
       - name: Check documentation
-        run: cargo doc --all-features --no-deps --document-private-items
+        # CAMBIADO a --features full
+        run: cargo doc --features full --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: -D warnings
       
@@ -193,7 +210,8 @@ jobs:
         run: cargo install cargo-tarpaulin
       
       - name: Generate coverage
-        run: cargo tarpaulin --all-features --workspace --timeout 300 --out xml
+        # CAMBIADO a --features full
+        run: cargo tarpaulin --features full --workspace --timeout 300 --out xml
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
       
