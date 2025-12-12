@@ -6,6 +6,7 @@
 #[cfg(feature = "audio")]
 pub mod audio;
 pub mod error;
+#[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
 pub mod llm;
 pub mod orchestor;
 pub mod splitters;
@@ -13,6 +14,7 @@ pub mod storage;
 #[cfg(feature = "tools")]
 pub mod tools;
 pub use error::*;
+#[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
 pub use llm::*;
 pub use splitters::*;
 pub use storage::*;
@@ -23,9 +25,11 @@ pub mod prelude {
     #[cfg(feature = "tools")]
     pub use crate::ToolArgs;
     pub use crate::error::CoreError;
+    #[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
     pub use crate::function::{
         AnyFunction, FnDeclarator, FnExecutor, FunctionDeclaration, FunctionResult,
     };
+    #[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
     pub use crate::llm::{LLM, LLMActions, LLMProvider};
     pub use schemars::JsonSchema;
 }

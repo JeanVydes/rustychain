@@ -1,5 +1,7 @@
-use gemini_rust::ClientError;
-use ollama_rs::error::OllamaError;
+#[cfg(feature = "google")]
+pub use gemini_rust::ClientError;
+#[cfg(feature = "ollama")]
+pub use ollama_rs::error::OllamaError;
 use std::error::Error as StdError;
 use thiserror::Error;
 
@@ -10,9 +12,11 @@ pub enum CoreError {
     #[error("{0}")]
     Generic(String),
 
+    #[cfg(feature = "google")]
     #[error("Gemini API Error: {0}")]
     Gemini(#[from] ClientError),
 
+    #[cfg(feature = "ollama")]
     #[error("Ollama Error: {0}")]
     Ollama(#[from] OllamaError),
 
