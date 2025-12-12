@@ -1,4 +1,4 @@
-use crate::llm::llm::LLMActions;
+use crate::llm::definitions::LLMActions;
 use futures_core::stream::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -25,6 +25,12 @@ pub struct Inference {
     pub output_schema: Option<Value>,
     pub config: GenerationConfig,
     pub llm: Option<Arc<LLM>>,
+}
+
+impl Default for Inference {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Inference {
@@ -81,9 +87,9 @@ impl Inference {
                         )
                         .await;
                 } else if let Some(message) = &self.message {
-                    return Ok(llm
+                    return llm
                         .generation(&mut self.history, message.clone(), self.config.clone())
-                        .await?);
+                        .await;
                 }
 
                 Err(Box::from(CoreError::Generic(

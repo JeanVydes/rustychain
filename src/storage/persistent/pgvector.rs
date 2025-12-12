@@ -22,6 +22,14 @@ pub struct Document {
     pub embedding: Option<Vector>,
 }
 
+#[derive(Debug, Clone)]
+pub struct DocumentInput(
+    pub String,
+    pub Vec<f32>,
+    pub Option<String>,
+    pub Option<Value>,
+);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
     pub document: Document,
@@ -200,14 +208,12 @@ impl VectorStore {
     /// Add multiple documents in a batch
     pub async fn add_documents_batch(
         &self,
-        documents: Vec<(String, Vec<f32>, Option<String>, Option<Value>)>,
+        documents: Vec<DocumentInput>,
     ) -> crate::Result<Vec<i32>> {
         let mut ids = Vec::new();
 
-        for (text, embedding, collection, metadata) in documents {
-            let id = self
-                .add_document(text, embedding, collection, metadata)
-                .await?;
+        for d in documents {
+            let id = self.add_document(d.0, d.1, d.2, d.3).await?;
             ids.push(id);
         }
 

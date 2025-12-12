@@ -141,10 +141,10 @@ impl HtmlSemanticSplitter {
                         "p", "div", "br", "h1", "h2", "h3", "h4", "h5", "h6", "li", "tr",
                     ]
                     .contains(&tag_name.as_str())
+                        && !result.ends_with(' ')
+                        && !result.ends_with('\n')
                     {
-                        if !result.ends_with(' ') && !result.ends_with('\n') {
-                            result.push(' ');
-                        }
+                        result.push(' ');
                     }
                     in_tag = false;
                 }
@@ -369,16 +369,16 @@ impl HtmlSemanticSplitter {
                 format!(". {}", part)
             };
 
-            if current.len() + part_with_period.len() > self.config.chunk_size {
-                if !current.is_empty() {
-                    result.push(HtmlChunk {
-                        content: current.trim().to_string(),
-                        metadata: HtmlMetadata {
-                            tags: headers.clone(),
-                        },
-                    });
-                    current.clear();
-                }
+            if current.len() + part_with_period.len() > self.config.chunk_size
+                && !current.is_empty()
+            {
+                result.push(HtmlChunk {
+                    content: current.trim().to_string(),
+                    metadata: HtmlMetadata {
+                        tags: headers.clone(),
+                    },
+                });
+                current.clear();
             }
 
             current.push_str(&part_with_period);

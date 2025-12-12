@@ -154,46 +154,46 @@ impl Message {
             parts: vec![].into(),
         };
 
-        if let Some(audio) = &self.audio {
-            if let Some(parts) = &mut content.parts {
-                let base64 = base64::engine::general_purpose::STANDARD.encode(audio);
-                parts.push(Part::InlineData {
-                    inline_data: Blob::new("audio/mp3", base64),
-                });
-            }
+        if let Some(audio) = &self.audio
+            && let Some(parts) = &mut content.parts
+        {
+            let base64 = base64::engine::general_purpose::STANDARD.encode(audio);
+            parts.push(Part::InlineData {
+                inline_data: Blob::new("audio/mp3", base64),
+            });
         }
 
-        if let Some(msg) = &self.message {
-            if let Some(parts) = &mut content.parts {
-                parts.push(Part::Text {
-                    text: msg.clone(),
-                    thought: Some(self.thinking.is_some()),
+        if let Some(msg) = &self.message
+            && let Some(parts) = &mut content.parts
+        {
+            parts.push(Part::Text {
+                text: msg.clone(),
+                thought: Some(self.thinking.is_some()),
+                thought_signature: None,
+            });
+        }
+
+        if !self.function_calls.is_empty()
+            && let Some(parts) = &mut content.parts
+        {
+            for fc in &self.function_calls {
+                parts.push(Part::FunctionCall {
+                    function_call: fc.to_gemini(),
                     thought_signature: None,
                 });
             }
         }
 
-        if !self.function_calls.is_empty() {
-            if let Some(parts) = &mut content.parts {
-                for fc in &self.function_calls {
-                    parts.push(Part::FunctionCall {
-                        function_call: fc.to_gemini(),
-                        thought_signature: None,
-                    });
-                }
-            }
-        }
-
-        if !self.function_results.is_empty() {
-            if let Some(parts) = &mut content.parts {
-                for fr in &self.function_results {
-                    parts.push(Part::FunctionResponse {
-                        function_response: FunctionResponse {
-                            name: fr.name.clone(),
-                            response: Some(fr.results.clone()),
-                        },
-                    });
-                }
+        if !self.function_results.is_empty()
+            && let Some(parts) = &mut content.parts
+        {
+            for fr in &self.function_results {
+                parts.push(Part::FunctionResponse {
+                    function_response: FunctionResponse {
+                        name: fr.name.clone(),
+                        response: Some(fr.results.clone()),
+                    },
+                });
             }
         }
 
@@ -315,14 +315,14 @@ impl Message {
                     message_parts.push(text.clone());
                 }
 
-                if let Part::InlineData { inline_data } = part {
-                    if inline_data.mime_type.starts_with("audio/") {
-                        let decoded = base64::engine::general_purpose::STANDARD
-                            .decode(&inline_data.data)
-                            .ok();
-                        if let Some(audio_data) = decoded {
-                            audio_parts.push(audio_data);
-                        }
+                if let Part::InlineData { inline_data } = part
+                    && inline_data.mime_type.starts_with("audio/")
+                {
+                    let decoded = base64::engine::general_purpose::STANDARD
+                        .decode(&inline_data.data)
+                        .ok();
+                    if let Some(audio_data) = decoded {
+                        audio_parts.push(audio_data);
                     }
                 }
             }
@@ -365,7 +365,7 @@ impl Message {
                 .message
                 .tool_calls
                 .into_iter()
-                .map(|fc| FunctionCall::from_ollama(fc))
+                .map(FunctionCall::from_ollama)
                 .collect(),
             function_results: vec![],
         }

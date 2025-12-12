@@ -1,6 +1,6 @@
 use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
 use crate::llm::{LLM, LLMActions};
-use crate::persistent::pgvector::SearchOptions;
+use crate::persistent::pgvector::{DocumentInput, SearchOptions};
 use crate::storage::persistent::pgvector::VectorStore;
 use crate::{FunctionDeclaration, RecursiveCharacterTextSplitter, TextSplitter};
 use schemars::{JsonSchema, schema_for};
@@ -125,7 +125,7 @@ impl FnExecutor<AugmentedArgs, serde_json::Value> for PgVectorAugmentedTool {
         let documents = embeddings
             .into_iter()
             .map(|(text, embedding)| {
-                (
+                DocumentInput(
                     text,
                     embedding,
                     Some("_default".to_string()),

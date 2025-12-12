@@ -172,19 +172,19 @@ impl DuckDuckGoSearchTool {
 
     fn extract_url(&self, href: &str) -> String {
         // DuckDuckGo URLs look like: //duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com...
-        if href.contains("uddg=") {
-            if let Some(start) = href.find("uddg=") {
-                let encoded = &href[start + 5..];
-                // Find the end of the URL (next & or end of string)
-                let end = encoded.find('&').unwrap_or(encoded.len());
-                let encoded_url = &encoded[..end];
+        if href.contains("uddg=")
+            && let Some(start) = href.find("uddg=")
+        {
+            let encoded = &href[start + 5..];
+            // Find the end of the URL (next & or end of string)
+            let end = encoded.find('&').unwrap_or(encoded.len());
+            let encoded_url = &encoded[..end];
 
-                // URL decode
-                match urlencoding::decode(encoded_url) {
-                    Ok(decoded) => return decoded.to_string(),
-                    Err(e) => {
-                        warn!("Failed to decode URL: {}", e);
-                    }
+            // URL decode
+            match urlencoding::decode(encoded_url) {
+                Ok(decoded) => return decoded.to_string(),
+                Err(e) => {
+                    warn!("Failed to decode URL: {}", e);
                 }
             }
         }

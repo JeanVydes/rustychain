@@ -2,14 +2,14 @@ use cpal::traits::HostTrait;
 
 pub fn get_default_input_device() -> Option<cpal::Device> {
     let host = cpal::default_host();
-    let device = host.default_input_device();
-    device
+
+    host.default_input_device()
 }
 
 pub fn get_default_output_device() -> Option<cpal::Device> {
     let host = cpal::default_host();
-    let device = host.default_output_device();
-    device
+
+    host.default_output_device()
 }
 
 pub fn list_input_devices() -> Result<Vec<cpal::Device>, cpal::DevicesError> {

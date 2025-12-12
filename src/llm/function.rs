@@ -189,11 +189,11 @@ where
     R: Serialize + Send + Sync + 'static,
 {
     fn name(&self) -> &str {
-        &self.name
+        self.name
     }
 
     fn description(&self) -> &str {
-        &self.description
+        self.description
     }
 
     fn parameters_schema(&self) -> &Schema {

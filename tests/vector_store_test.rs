@@ -10,7 +10,10 @@ use common::{
     unique_table_name,
 };
 use pretty_assertions::assert_eq;
-use rustychain::storage::persistent::pgvector::{SearchOptions, VectorStore};
+use rustychain::{
+    persistent::pgvector::DocumentInput,
+    storage::persistent::pgvector::{SearchOptions, VectorStore},
+};
 use serde_json::json;
 
 /// Test basic VectorStore creation and table initialization
@@ -65,9 +68,9 @@ async fn test_add_documents_batch() {
         .await
         .unwrap();
 
-    let documents: Vec<(String, Vec<f32>, Option<String>, Option<serde_json::Value>)> = (0..10)
+    let documents: Vec<DocumentInput> = (0..10)
         .map(|i| {
-            (
+            DocumentInput(
                 format!("Document {}", i),
                 random_embedding(TEST_DIMENSIONS),
                 Some("batch_test".to_string()),

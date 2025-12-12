@@ -4,8 +4,8 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use rustychain::persistent::pgvector::DocumentInput;
 use rustychain::storage::persistent::pgvector::{DEFAULT_DIMENSIONS, VectorStore};
-use serde_json::Value;
 use std::hint::black_box;
 use testcontainers::{
     ContainerAsync, GenericImage, ImageExt,
@@ -66,13 +66,13 @@ fn vector_store_benchmarks(c: &mut Criterion) {
     let dim = DEFAULT_DIMENSIONS as usize;
     let mut rng = StdRng::seed_from_u64(42);
 
-    let docs_small: Vec<(String, Vec<f32>, Option<String>, Option<Value>)> = (0..n_small)
+    let docs_small: Vec<DocumentInput> = (0..n_small)
         .map(|i| {
             let mut emb = vec![0.0f32; dim];
             for v in emb.iter_mut() {
                 *v = rng.random::<f32>();
             }
-            (format!("doc-{}", i), emb, Some("bench".to_string()), None)
+            DocumentInput(format!("doc-{}", i), emb, Some("bench".to_string()), None)
         })
         .collect();
 

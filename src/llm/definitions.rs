@@ -190,7 +190,7 @@ impl LLM {
             Err(e) => return Err(Box::from(CoreError::Gemini(e))),
         };
 
-        return Ok(client);
+        Ok(client)
     }
 
     /// Creates an OpenAI client configured for this LLM.
@@ -213,7 +213,7 @@ impl LLM {
                 Box::from(CoreError::OpenAI(format!("OpenAI client error: {}", err)))
             })?;
 
-        return Ok(client);
+        Ok(client)
     }
 
     /// Adds a single tool to the LLM.
@@ -398,7 +398,7 @@ impl LLMActions for LLM {
                     )
                     .await
                 {
-                    Ok(res) => return Ok(Message::from_ollama(res)),
+                    Ok(res) => Ok(Message::from_ollama(res)),
                     Err(err) => Err(Box::from(CoreError::Ollama(err))),
                 }
             }
@@ -513,51 +513,44 @@ impl LLMActions for LLM {
                     },
                 )?;
                 let mapped = stream.map(|res| match res.clone() {
-                    ChatCompletionStreamResponse::ToolCall(toolcalls) => {
-                        return Ok(Message {
-                            role: Role::Assistant,
-                            message: None,
-                            audio: None,
-                            images: None,
-                            thinking: None,
-                            function_calls: toolcalls
-                                .iter()
-                                .map(|tc| {
-                                    let args_str =
-                                        tc.function.arguments.clone().unwrap_or_default();
-                                    let arguments =
-                                        serde_json::from_str(&args_str).unwrap_or(Value::Null);
-                                    FunctionCall {
-                                        name: tc.function.name.clone().unwrap_or_default(),
-                                        arguments,
-                                    }
-                                })
-                                .collect(),
-                            function_results: vec![],
-                        });
-                    }
-                    ChatCompletionStreamResponse::Content(content) => {
-                        return Ok(Message {
-                            role: Role::Assistant,
-                            message: Some(content),
-                            audio: None,
-                            images: None,
-                            thinking: None,
-                            function_calls: vec![],
-                            function_results: vec![],
-                        });
-                    }
-                    ChatCompletionStreamResponse::Done => {
-                        return Ok(Message {
-                            role: Role::Assistant,
-                            message: None,
-                            audio: None,
-                            images: None,
-                            thinking: None,
-                            function_calls: vec![],
-                            function_results: vec![],
-                        });
-                    }
+                    ChatCompletionStreamResponse::ToolCall(toolcalls) => Ok(Message {
+                        role: Role::Assistant,
+                        message: None,
+                        audio: None,
+                        images: None,
+                        thinking: None,
+                        function_calls: toolcalls
+                            .iter()
+                            .map(|tc| {
+                                let args_str = tc.function.arguments.clone().unwrap_or_default();
+                                let arguments =
+                                    serde_json::from_str(&args_str).unwrap_or(Value::Null);
+                                FunctionCall {
+                                    name: tc.function.name.clone().unwrap_or_default(),
+                                    arguments,
+                                }
+                            })
+                            .collect(),
+                        function_results: vec![],
+                    }),
+                    ChatCompletionStreamResponse::Content(content) => Ok(Message {
+                        role: Role::Assistant,
+                        message: Some(content),
+                        audio: None,
+                        images: None,
+                        thinking: None,
+                        function_calls: vec![],
+                        function_results: vec![],
+                    }),
+                    ChatCompletionStreamResponse::Done => Ok(Message {
+                        role: Role::Assistant,
+                        message: None,
+                        audio: None,
+                        images: None,
+                        thinking: None,
+                        function_calls: vec![],
+                        function_results: vec![],
+                    }),
                 });
                 Ok(Box::pin(mapped))
             }

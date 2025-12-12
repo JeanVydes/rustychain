@@ -27,11 +27,11 @@ pub struct MarkdownChunk {
 
 /// A splitter that breaks Markdown documents by header structure.
 ///
-/// It splits on headers (# , ## , ### , etc.) and optionally includes
+/// It splits on headers and optionally includes
 /// the header hierarchy in each chunk for context.
 pub struct MarkdownHeaderTextSplitter {
     config: SplitterConfig,
-    /// Headers to split on, e.g., ["#", "##", "###"]
+    /// Headers to split on
     headers_to_split_on: Vec<(String, String)>,
     /// Whether to include headers in the chunk content.
     include_headers: bool,
@@ -229,11 +229,11 @@ impl MarkdownHeaderTextSplitter {
                 // If single paragraph is too large, split by lines
                 if para_trimmed.len() > self.config.chunk_size {
                     for line in para_trimmed.lines() {
-                        if current.len() + line.len() + 1 > self.config.chunk_size {
-                            if !current.is_empty() {
-                                result.push(current.trim().to_string());
-                                current.clear();
-                            }
+                        if current.len() + line.len() + 1 > self.config.chunk_size
+                            && !current.is_empty()
+                        {
+                            result.push(current.trim().to_string());
+                            current.clear();
                         }
                         if !current.is_empty() {
                             current.push('\n');
