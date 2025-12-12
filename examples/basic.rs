@@ -1,5 +1,5 @@
-use rustychain::{LLM, LLMProvider, Message};
 use rustychain::prelude::*;
+use rustychain::{LLM, LLMProvider, Message};
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

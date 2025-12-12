@@ -49,7 +49,11 @@ impl Display for Message {
             "Role: {:?}\nMessage: {:?}\nAudio: {}\nImages: {}\nThinking: {:?}\nFunction Calls: {}\nFunction Results: {}",
             self.role,
             self.message,
-            if self.audio.is_some() { "<audio data>" } else { "None" },
+            if self.audio.is_some() {
+                "<audio data>"
+            } else {
+                "None"
+            },
             if let Some(images) = &self.images {
                 format!("{} image(s)", images.len())
             } else {
@@ -95,7 +99,6 @@ impl Message {
         self.function_results.push(result);
         self
     }
-
 
     pub fn add_function_call(mut self, call: FunctionCall) -> Self {
         self.function_calls.push(call);

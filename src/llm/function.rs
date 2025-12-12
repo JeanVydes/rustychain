@@ -172,7 +172,7 @@ pub trait AnyFunction: Send + Debug + Sync {
     fn openai_tool_definition(&self) -> openai_api_rs::v1::chat_completion::Tool;
 }
 
-impl <A, R> From<FunctionDeclaration<A, R>> for Arc<dyn AnyFunction>
+impl<A, R> From<FunctionDeclaration<A, R>> for Arc<dyn AnyFunction>
 where
     A: de::DeserializeOwned + Debug + ToolArgs + 'static,
     R: Serialize + Send + Sync + 'static,
