@@ -15,3 +15,12 @@ pub use error::*;
 pub use llm::*;
 pub use splitters::*;
 pub use storage::*;
+
+pub mod prelude {
+    pub use schemars::JsonSchema;
+    pub use crate::error::CoreError;
+    pub use crate::function::{AnyFunction, FunctionDeclaration, FnDeclarator, FnExecutor, FunctionResult};
+    pub use crate::llm::{LLM, LLMProvider, LLMActions};
+    #[cfg(feature = "tools")]
+    pub use crate::ToolArgs;
+}

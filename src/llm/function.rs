@@ -166,8 +166,20 @@ pub trait AnyFunction: Send + Debug + Sync {
 
     async fn execute(&self, args: &serde_json::Value) -> crate::Result<serde_json::Value>;
 
+    #[cfg(feature = "google")]
     fn gemini_tool_definition(&self) -> GeminiTool;
+    #[cfg(feature = "openai")]
     fn openai_tool_definition(&self) -> openai_api_rs::v1::chat_completion::Tool;
+}
+
+impl <A, R> From<FunctionDeclaration<A, R>> for Arc<dyn AnyFunction>
+where
+    A: de::DeserializeOwned + Debug + ToolArgs + 'static,
+    R: Serialize + Send + Sync + 'static,
+{
+    fn from(decl: FunctionDeclaration<A, R>) -> Self {
+        Arc::new(decl)
+    }
 }
 
 #[async_trait::async_trait]

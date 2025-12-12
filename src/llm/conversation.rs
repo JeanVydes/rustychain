@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use base64::Engine;
 use gemini_rust::{Blob, Content, FunctionResponse, GenerationResponse, Part};
 use ollama_rs::generation::{
@@ -40,7 +42,102 @@ pub struct Message {
     pub function_results: Vec<FunctionResult>,
 }
 
+impl Display for Message {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Role: {:?}\nMessage: {:?}\nAudio: {}\nImages: {}\nThinking: {:?}\nFunction Calls: {}\nFunction Results: {}",
+            self.role,
+            self.message,
+            if self.audio.is_some() { "<audio data>" } else { "None" },
+            if let Some(images) = &self.images {
+                format!("{} image(s)", images.len())
+            } else {
+                "None".to_string()
+            },
+            self.thinking,
+            self.function_calls.len(),
+            self.function_results.len()
+        )
+    }
+}
+
 impl Message {
+    pub fn new(role: Role, message: Option<String>) -> Self {
+        Self {
+            role,
+            message,
+            audio: None,
+            images: None,
+            thinking: None,
+            function_calls: vec![],
+            function_results: vec![],
+        }
+    }
+
+    pub fn user(message: &'static str) -> Self {
+        Self::new(Role::User, Some(message.to_string()))
+    }
+
+    pub fn assistant(message: &'static str) -> Self {
+        Self::new(Role::Assistant, Some(message.to_string()))
+    }
+
+    pub fn system(message: &'static str) -> Self {
+        Self::new(Role::System, Some(message.to_string()))
+    }
+
+    pub fn tool(message: &'static str) -> Self {
+        Self::new(Role::Tool, Some(message.to_string()))
+    }
+
+    pub fn add_function_result(mut self, result: FunctionResult) -> Self {
+        self.function_results.push(result);
+        self
+    }
+
+
+    pub fn add_function_call(mut self, call: FunctionCall) -> Self {
+        self.function_calls.push(call);
+        self
+    }
+
+    pub fn with_audio(mut self, audio: Vec<u8>) -> Self {
+        self.audio = Some(audio);
+        self
+    }
+
+    pub fn with_images(mut self, images: Vec<Image>) -> Self {
+        self.images = Some(images);
+        self
+    }
+
+    pub fn add_image(mut self, image: Image) -> Self {
+        if let Some(imgs) = &mut self.images {
+            imgs.push(image);
+        } else {
+            self.images = Some(vec![image]);
+        }
+        self
+    }
+
+    pub fn with_thinking(mut self, thinking: String) -> Self {
+        self.thinking = Some(thinking);
+        self
+    }
+
+    pub fn is_thinking(&self) -> bool {
+        self.thinking.is_some()
+    }
+
+    pub fn has_function_calls(&self) -> bool {
+        !self.function_calls.is_empty()
+    }
+
+    pub fn has_function_results(&self) -> bool {
+        !self.function_results.is_empty()
+    }
+
     /// Converts this `Message` to a Gemini-compatible message.
     #[cfg(feature = "google")]
     pub fn to_gemini(&self) -> gemini_rust::Message {

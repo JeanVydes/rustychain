@@ -14,8 +14,12 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rustychain = "0.1"
+rustychain = "0.0.1"
 ```
+
+## Benchmarks
+
+See the [BENCHMARKS.md](BENCHMARKS.md) file for detailed performance benchmarks.
 
 ## License
 

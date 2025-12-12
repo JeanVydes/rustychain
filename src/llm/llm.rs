@@ -248,6 +248,7 @@ impl LLMActions for LLM {
     }
 
     /// Performs text generation based on the provided history and message.
+    #[allow(unreachable_patterns)]
     async fn generation(
         &self,
         history: &mut Vec<Message>,
@@ -412,6 +413,7 @@ impl LLMActions for LLM {
     }
 
     /// Streams text generation results based on the provided history and message.
+    #[allow(unreachable_patterns)]
     async fn stream(
         &self,
         history: &mut Vec<Message>,

@@ -2,13 +2,15 @@
 name = "rustychain"
 version = "0.0.1"
 edition = "2024"
-description = "A Rust library for building LLM-powered applications with RAG support"
+description = "A Rust library for building LLM-powered applications"
 license = "MIT"
+homepage = "https://github.com/JeanVydes/rustychain"
 repository = "https://github.com/JeanVydes/rustychain"
 documentation = "https://docs.rs/rustychain"
 readme = "README.md"
 keywords = ["llm", "ai", "agent"]
 categories = ["api-bindings", "asynchronous", "database"]
+authors = ["Jean Vydes <j@lojur.com>"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
