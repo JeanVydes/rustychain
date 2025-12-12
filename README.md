@@ -1,19 +1,12 @@
 # RustyChain
 
-<p align="center">
-  <img src="https://img.shields.io/crates/v/rustychain.svg" alt="Crates.io">
-  <img src="https://img.shields.io/docsrs/rustychain" alt="docs.rs">
-  <img src="https://img.shields.io/crates/l/rustychain" alt="License">
-  <img src="https://github.com/JeanVydes/rustychain/actions/workflows/ci.yml/badge.svg" alt="CI">
-</p>
-
 A high-performance, type-safe Rust library for building LLM-powered applications.
 
 ## Installation
 
 Add RustyChain to your project using Cargo:
 
-``bash
+```bash
 cargo add rustychain
 ```
 
