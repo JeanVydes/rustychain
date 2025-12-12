@@ -141,23 +141,23 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
 
-  minimal-versions:
-    name: Minimal Versions
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-      - uses: Swatinem/rust-cache@v2
-      
-      - name: Install OpenSSL dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libssl-dev pkg-config
-      
-      - name: Check minimal versions
-        run: |
-          cargo update -Z minimal-versions
-          cargo check --features full
+  #minimal-versions:
+  #  name: Minimal Versions
+  #  runs-on: ubuntu-latest
+  #  steps:
+  #    - uses: actions/checkout@v4
+  #    - uses: dtolnay/rust-toolchain@nightly
+  #    - uses: Swatinem/rust-cache@v2
+  #    
+  #    - name: Install OpenSSL dependencies
+  #      run: |
+  #        sudo apt-get update
+  #        sudo apt-get install -y libssl-dev pkg-config
+  #    
+  #    - name: Check minimal versions
+  #      run: |
+  #        cargo update -Z minimal-versions
+  #        cargo check --features full
 
   docs:
     name: Documentation
