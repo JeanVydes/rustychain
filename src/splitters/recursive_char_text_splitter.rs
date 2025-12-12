@@ -402,7 +402,7 @@ mod tests {
         let text = "part1|||part2|||part3";
         let chunks = splitter.split_text(text);
 
-        assert!(chunks.len() >= 1);
+        assert!(!chunks.is_empty());
     }
 
     #[test]

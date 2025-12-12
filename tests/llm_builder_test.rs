@@ -139,7 +139,7 @@ fn test_provider_equality() {
 #[test]
 fn test_provider_ordering() {
     // Providers should have consistent ordering for use in collections
-    let mut providers = vec![LLMProvider::Ollama, LLMProvider::Google];
+    let mut providers = [LLMProvider::Ollama, LLMProvider::Google];
     providers.sort();
 
     // Ordering is based on enum variant order

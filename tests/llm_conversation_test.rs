@@ -42,7 +42,7 @@ fn test_role_deserialization() {
 
 #[test]
 fn test_role_roundtrip_serialization() {
-    let roles = vec![Role::User, Role::Assistant, Role::System, Role::Tool];
+    let roles = [Role::User, Role::Assistant, Role::System, Role::Tool];
 
     for role in roles {
         let serialized = serde_json::to_string(&role).unwrap();
@@ -62,7 +62,7 @@ fn test_role_equality() {
 fn test_role_ordering_consistent() {
     // Run multiple times to ensure ordering is deterministic
     for _ in 0..10 {
-        let mut roles = vec![Role::Tool, Role::User, Role::Assistant, Role::System];
+        let mut roles = [Role::Tool, Role::User, Role::Assistant, Role::System];
         roles.sort();
 
         // Should always be in the same order (based on enum definition)
@@ -447,7 +447,7 @@ fn test_role_to_gemini_mapping() {
 fn test_role_to_ollama_mapping() {
     use ollama_rs::generation::chat::MessageRole;
 
-    let roles = vec![
+    let roles = [
         (Role::User, MessageRole::User),
         (Role::Assistant, MessageRole::Assistant),
         (Role::System, MessageRole::System),

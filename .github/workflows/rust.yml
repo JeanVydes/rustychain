@@ -152,13 +152,11 @@ jobs:
       - name: Install OpenSSL dependencies
         run: |
           sudo apt-get update
-          # SOLUCION para el error de openssl-sys
-          sudo apt-get install -y libssl-dev
+          sudo apt-get install -y libssl-dev pkg-config
       
       - name: Check minimal versions
         run: |
           cargo update -Z minimal-versions
-          # Usamos --features full para evitar el audio, pero probamos todo lo demás
           cargo check --features full
 
   docs:
