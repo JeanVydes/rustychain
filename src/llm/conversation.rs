@@ -1,13 +1,13 @@
-use std::fmt::Display;
-
+use crate::CoreError;
 use base64::Engine;
 use gemini_rust::{Blob, Content, FunctionResponse, GenerationResponse, Part};
-use ollama_rs::generation::{
-    chat::{ChatMessage, ChatMessageResponse, MessageRole},
-    images::Image,
+use ollama_rs::generation::chat::{ChatMessage, ChatMessageResponse, MessageRole};
+use openai_api_rs::v1::chat_completion::{
+    ChatCompletionMessage, ChatCompletionMessageForResponse,
+    chat_completion_stream::ChatCompletionStreamResponse,
 };
-use openai_api_rs::v1::chat_completion::ChatCompletionMessage;
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 
 use crate::llm::{FunctionResult, function::FunctionCall};
 
@@ -25,6 +25,91 @@ pub enum Role {
     Tool,
     Assistant,
     User,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Image {
+    pub url: String,
+    pub text: Option<String>,
+}
+
+impl Image {
+    pub fn new(url: String, text: Option<String>) -> Self {
+        Self { url, text }
+    }
+
+    #[cfg(feature = "openai")]
+    pub fn from_openai(image: openai_api_rs::v1::chat_completion::ImageUrl) -> Self {
+        let url = match image.image_url {
+            Some(u) => u.url,
+            None => "".to_string(),
+        };
+
+        Self {
+            url,
+            text: image.text,
+        }
+    }
+
+    #[cfg(feature = "openai")]
+    pub fn to_openai(&self) -> openai_api_rs::v1::chat_completion::ImageUrl {
+        openai_api_rs::v1::chat_completion::ImageUrl {
+            r#type: openai_api_rs::v1::chat_completion::ContentType::image_url,
+            image_url: Some(openai_api_rs::v1::chat_completion::ImageUrlType {
+                url: self.url.clone(),
+            }),
+            text: self.text.clone(),
+        }
+    }
+
+    #[cfg(feature = "ollama")]
+    pub fn from_ollama(image: ollama_rs::generation::images::Image) -> Self {
+        Self {
+            url: image.to_base64().to_string(),
+            text: None,
+        }
+    }
+
+    #[cfg(feature = "ollama")]
+    pub fn to_ollama(&self) -> ollama_rs::generation::images::Image {
+        ollama_rs::generation::images::Image::from_base64(&self.url)
+    }
+
+    #[cfg(feature = "google")]
+    pub fn from_gemini(image: gemini_rust::Part) -> crate::Result<Self> {
+        if let gemini_rust::Part::InlineData { inline_data } = image {
+            match inline_data.mime_type.as_str() {
+                "image/png" | "image/jpeg" | "image/jpg" | "image/gif" => Ok(Self {
+                    url: format!("data:{};base64,{}", inline_data.mime_type, inline_data.data),
+                    text: None,
+                }),
+                _ => Err(Box::from(CoreError::Generic(
+                    "Unsupported image MIME type".to_string(),
+                ))),
+            }
+        } else {
+            Err(Box::from(CoreError::Generic(
+                "Provided part is not an InlineData part".to_string(),
+            )))
+        }
+    }
+
+    #[cfg(feature = "google")]
+    pub fn to_gemini(&self) -> gemini_rust::Part {
+        let base64_data = if self.url.starts_with("data:") {
+            // Extract base64 part from data URL
+            self.url
+                .split_once(",")
+                .map(|x| x.1)
+                .unwrap_or("")
+                .to_string()
+        } else {
+            self.url.clone()
+        };
+        gemini_rust::Part::InlineData {
+            inline_data: Blob::new("image/png", base64_data),
+        }
+    }
 }
 
 /// A `Message` in the conversation, which may include text, audio, images, and function calls/results.
@@ -203,6 +288,11 @@ impl Message {
     /// Converts this `Message` to an Ollama-compatible message.
     #[cfg(feature = "ollama")]
     pub fn to_ollama(&self) -> ChatMessage {
+        let images = match &self.images {
+            Some(imgs) => imgs.iter().map(|img| img.to_ollama()).collect(),
+            None => vec![],
+        };
+
         ChatMessage {
             role: match self.role {
                 Role::User => MessageRole::User,
@@ -216,7 +306,11 @@ impl Message {
                 .iter()
                 .map(|fc| fc.to_ollama())
                 .collect(),
-            images: self.images.clone(),
+            images: if images.is_empty() {
+                None
+            } else {
+                Some(images)
+            },
             thinking: self.thinking.clone(),
         }
     }
@@ -350,6 +444,12 @@ impl Message {
     /// Converts an Ollama `ChatMessageResponse` to this `Message` format.
     #[cfg(feature = "ollama")]
     pub fn from_ollama(ollama_message: ChatMessageResponse) -> Message {
+        let images = ollama_message.message.images.as_ref().map(|imgs| {
+            imgs.iter()
+                .map(|img| Image::from_ollama(img.clone()))
+                .collect()
+        });
+
         Message {
             role: match ollama_message.message.role {
                 MessageRole::User => Role::User,
@@ -359,7 +459,7 @@ impl Message {
             },
             message: Some(ollama_message.message.content),
             audio: None,
-            images: ollama_message.message.images,
+            images,
             thinking: ollama_message.message.thinking,
             function_calls: ollama_message
                 .message
@@ -373,24 +473,113 @@ impl Message {
 
     /// Converts an OpenAI `ChatCompletionMessage` to this `Message` format.
     #[cfg(feature = "openai")]
-    pub fn from_openai(openai_message: ChatCompletionMessage) -> Message {
+    pub fn from_openai(message: ChatCompletionMessage) -> Message {
+        let function_calls = message
+            .tool_calls
+            .as_ref()
+            .map(|tcs| {
+                tcs.iter()
+                    .map(|tc| FunctionCall::from_openai(tc.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let images = match &message.content {
+            openai_api_rs::v1::chat_completion::Content::ImageUrl(image_vec) => Some(
+                image_vec
+                    .iter()
+                    .map(|img| Image::from_openai(img.clone()))
+                    .collect(),
+            ),
+            _ => None,
+        };
+
         Message {
-            role: match openai_message.role {
+            role: match message.role {
                 openai_api_rs::v1::chat_completion::MessageRole::user => Role::User,
                 openai_api_rs::v1::chat_completion::MessageRole::system => Role::System,
                 openai_api_rs::v1::chat_completion::MessageRole::tool => Role::Tool,
                 openai_api_rs::v1::chat_completion::MessageRole::assistant => Role::Assistant,
                 _ => Role::Assistant,
             },
-            message: Some(match openai_message.content {
+            message: Some(match message.content {
                 openai_api_rs::v1::chat_completion::Content::Text(text) => text,
                 _ => "".to_string(),
             }),
             audio: None,
-            images: None,
+            images,
             thinking: None,
-            function_calls: vec![],
+            function_calls,
             function_results: vec![],
+        }
+    }
+
+    #[cfg(feature = "openai")]
+    pub fn from_openai_chat_completion_message_for_response(
+        message: &ChatCompletionMessageForResponse,
+    ) -> crate::Result<Message> {
+        let function_calls = message
+            .tool_calls
+            .as_ref()
+            .map(|tcs| {
+                tcs.iter()
+                    .map(|tc| FunctionCall::from_openai(tc.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(Message {
+            role: match message.role {
+                openai_api_rs::v1::chat_completion::MessageRole::user => Role::User,
+                openai_api_rs::v1::chat_completion::MessageRole::system => Role::System,
+                openai_api_rs::v1::chat_completion::MessageRole::tool => Role::Tool,
+                openai_api_rs::v1::chat_completion::MessageRole::assistant => Role::Assistant,
+                _ => Role::Assistant,
+            },
+            message: message.content.clone(),
+            audio: None,
+            images: None,
+            thinking: message.reasoning_content.clone(),
+            function_calls,
+            function_results: vec![],
+        })
+    }
+
+    #[cfg(feature = "openai")]
+    pub fn from_openai_chat_completion_stream_response(
+        message: ChatCompletionStreamResponse,
+    ) -> crate::Result<Message> {
+        match message {
+            ChatCompletionStreamResponse::ToolCall(toolcalls) => Ok(Message {
+                role: Role::Assistant,
+                message: None,
+                audio: None,
+                images: None,
+                thinking: None,
+                function_calls: toolcalls
+                    .iter()
+                    .map(|tc| FunctionCall::from_openai(tc.clone()))
+                    .collect(),
+                function_results: vec![],
+            }),
+            ChatCompletionStreamResponse::Content(content) => Ok(Message {
+                role: Role::Assistant,
+                message: Some(content),
+                audio: None,
+                images: None,
+                thinking: None,
+                function_calls: vec![],
+                function_results: vec![],
+            }),
+            ChatCompletionStreamResponse::Done => Ok(Message {
+                role: Role::Assistant,
+                message: None,
+                audio: None,
+                images: None,
+                thinking: None,
+                function_calls: vec![],
+                function_results: vec![],
+            }),
         }
     }
 }

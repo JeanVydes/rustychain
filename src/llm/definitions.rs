@@ -13,9 +13,8 @@ use ollama_rs::{
 use openai_api_rs::v1::{
     api::{OpenAIClient, OpenAIClientBuilder},
     chat_completion::{
-        ChatCompletionMessage,
-        chat_completion::ChatCompletionRequest,
-        chat_completion_stream::{ChatCompletionStreamRequest, ChatCompletionStreamResponse},
+        ChatCompletionMessage, chat_completion::ChatCompletionRequest,
+        chat_completion_stream::ChatCompletionStreamRequest,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -24,7 +23,7 @@ use std::pin::Pin;
 use url::Url;
 
 use crate::{
-    CoreError, FunctionCall,
+    CoreError,
     llm::{
         builder::LLMBuilder,
         conversation::{Message, Role},
@@ -279,7 +278,7 @@ impl LLMActions for LLM {
                     .generate_content()
                     .with_system_instruction(self.system_prompt.clone())
                     .with_messages(history)
-                    .with_thinking_budget(0)
+                    .with_thinking_budget(thinking_budget)
                     .with_generation_config(GeminiGenerationConfig {
                         temperature: Some(config.temperature),
                         top_p: Some(config.top_p),
@@ -351,36 +350,9 @@ impl LLMActions for LLM {
                 )?;
 
                 if let Some(choice) = res.choices.first() {
-                    // Extract function calls if present
-                    let function_calls = choice
-                        .message
-                        .tool_calls
-                        .as_ref()
-                        .map(|tcs| {
-                            tcs.iter()
-                                .map(|tc| {
-                                    let args_str =
-                                        tc.function.arguments.clone().unwrap_or_default();
-                                    let arguments =
-                                        serde_json::from_str(&args_str).unwrap_or(Value::Null);
-                                    FunctionCall {
-                                        name: tc.function.name.clone().unwrap_or_default(),
-                                        arguments,
-                                    }
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default();
-
-                    Ok(Message {
-                        role: Role::Assistant,
-                        message: choice.message.content.clone(),
-                        audio: None,
-                        images: None,
-                        thinking: choice.message.reasoning_content.clone(),
-                        function_calls,
-                        function_results: vec![],
-                    })
+                    Ok(Message::from_openai_chat_completion_message_for_response(
+                        &choice.message,
+                    )?)
                 } else {
                     Err(Box::from(CoreError::Generic(
                         "No choices returned from OpenAI".to_owned(),
@@ -444,7 +416,7 @@ impl LLMActions for LLM {
                     .generate_content()
                     .with_system_instruction(self.system_prompt.clone())
                     .with_messages(history)
-                    .with_thinking_budget(0)
+                    .with_thinking_budget(thinking_budget)
                     .with_generation_config(GeminiGenerationConfig {
                         temperature: Some(config.temperature),
                         top_p: Some(config.top_p),
@@ -512,46 +484,7 @@ impl LLMActions for LLM {
                         Box::from(CoreError::OpenAI("OpenAI stream request failed".to_owned()))
                     },
                 )?;
-                let mapped = stream.map(|res| match res.clone() {
-                    ChatCompletionStreamResponse::ToolCall(toolcalls) => Ok(Message {
-                        role: Role::Assistant,
-                        message: None,
-                        audio: None,
-                        images: None,
-                        thinking: None,
-                        function_calls: toolcalls
-                            .iter()
-                            .map(|tc| {
-                                let args_str = tc.function.arguments.clone().unwrap_or_default();
-                                let arguments =
-                                    serde_json::from_str(&args_str).unwrap_or(Value::Null);
-                                FunctionCall {
-                                    name: tc.function.name.clone().unwrap_or_default(),
-                                    arguments,
-                                }
-                            })
-                            .collect(),
-                        function_results: vec![],
-                    }),
-                    ChatCompletionStreamResponse::Content(content) => Ok(Message {
-                        role: Role::Assistant,
-                        message: Some(content),
-                        audio: None,
-                        images: None,
-                        thinking: None,
-                        function_calls: vec![],
-                        function_results: vec![],
-                    }),
-                    ChatCompletionStreamResponse::Done => Ok(Message {
-                        role: Role::Assistant,
-                        message: None,
-                        audio: None,
-                        images: None,
-                        thinking: None,
-                        function_calls: vec![],
-                        function_results: vec![],
-                    }),
-                });
+                let mapped = stream.map(Message::from_openai_chat_completion_stream_response);
                 Ok(Box::pin(mapped))
             }
             #[cfg(feature = "ollama")]
@@ -629,7 +562,7 @@ impl LLMActions for LLM {
                     .generate_content()
                     .with_system_instruction(self.system_prompt.clone())
                     .with_messages(history)
-                    .with_thinking_budget(0)
+                    .with_thinking_budget(thinking_budget)
                     .with_generation_config(GeminiGenerationConfig {
                         temperature: Some(config.temperature),
                         top_p: Some(config.top_p),
@@ -706,7 +639,7 @@ impl LLMActions for LLM {
                     .generate_content()
                     .with_system_instruction(self.system_prompt.clone())
                     .with_messages(history)
-                    .with_thinking_budget(0)
+                    .with_thinking_budget(thinking_budget)
                     .with_generation_config(GeminiGenerationConfig {
                         temperature: Some(config.temperature),
                         top_p: Some(config.top_p),

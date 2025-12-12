@@ -2,6 +2,7 @@
 //! This crate provides core functionalities, including LLM integration, tool management,
 //! document splitting, and vector storage.
 
+#[cfg(target_os = "linux")]
 #[cfg(feature = "audio")]
 pub mod audio;
 pub mod error;
@@ -15,6 +16,8 @@ pub use error::*;
 pub use llm::*;
 pub use splitters::*;
 pub use storage::*;
+
+pub const BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
 
 pub mod prelude {
     #[cfg(feature = "tools")]

@@ -14,6 +14,7 @@ use serde_json::Value;
 
 use crate::CoreError;
 
+// Experimental, this needs more work
 /// Converts a schemars-generated JSON schema Value to OpenAI's FunctionParameters
 fn schema_to_openai_parameters(schema: &Value) -> OpenAIFunctionParameters {
     let properties = schema
@@ -107,6 +108,7 @@ pub struct FunctionResult {
 }
 
 impl FunctionCall {
+    #[cfg(feature = "google")]
     pub fn to_gemini(&self) -> gemini_rust::FunctionCall {
         gemini_rust::FunctionCall {
             name: self.name.clone(),
@@ -115,6 +117,7 @@ impl FunctionCall {
         }
     }
 
+    #[cfg(feature = "ollama")]
     pub fn to_ollama(&self) -> ollama_rs::generation::tools::ToolCall {
         ollama_rs::generation::tools::ToolCall {
             function: ToolCallFunction {
@@ -124,6 +127,15 @@ impl FunctionCall {
         }
     }
 
+    #[cfg(feature = "openai")]
+    pub fn to_openai(&self) -> openai_api_rs::v1::chat_completion::ToolCallFunction {
+        openai_api_rs::v1::chat_completion::ToolCallFunction {
+            name: Some(self.name.clone()),
+            arguments: Some(self.arguments.to_string()),
+        }
+    }
+
+    #[cfg(feature = "google")]
     pub fn from_gemini(gemini_call: gemini_rust::FunctionCall) -> FunctionCall {
         FunctionCall {
             name: gemini_call.name,
@@ -131,10 +143,24 @@ impl FunctionCall {
         }
     }
 
+    #[cfg(feature = "ollama")]
     pub fn from_ollama(ollama_call: ollama_rs::generation::tools::ToolCall) -> FunctionCall {
         FunctionCall {
             name: ollama_call.function.name,
             arguments: ollama_call.function.arguments,
+        }
+    }
+
+    #[cfg(feature = "openai")]
+    pub fn from_openai(openai_call: openai_api_rs::v1::chat_completion::ToolCall) -> FunctionCall {
+        FunctionCall {
+            name: openai_call.function.name.unwrap_or_default(),
+            arguments: openai_call
+                .function
+                .arguments
+                .as_ref()
+                .and_then(|args_str| serde_json::from_str(args_str).ok())
+                .unwrap_or(Value::Null),
         }
     }
 }
@@ -203,8 +229,8 @@ where
     async fn execute(&self, args: &serde_json::Value) -> crate::Result<serde_json::Value> {
         let concrete_args: A = serde_json::from_value(args.clone()).map_err(|e| {
             Box::new(CoreError::Generic(format!(
-                "Failed to deserialize function arguments: {}",
-                e
+                "Failed to deserialize arguments for function '{}' : {}",
+                self.name, e
             ))) as Box<dyn std::error::Error + Send + Sync>
         })?;
 
