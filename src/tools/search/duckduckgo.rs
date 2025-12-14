@@ -1,5 +1,5 @@
 //!! DuckDuckGo Search Tool
-//! 
+//!
 //! This module provides a tool for performing web searches using DuckDuckGo.
 
 use crate::{

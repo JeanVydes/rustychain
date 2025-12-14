@@ -1,5 +1,5 @@
 //! pgvector
-//! 
+//!
 //! This module provides tools for integrating PostgreSQL with pgvector
 //! as a vector store.
 

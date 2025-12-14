@@ -45,6 +45,7 @@ pub enum CoreError {
     #[error("HTTP Error: {0}")]
     HTTP(Box<dyn StdError + Send + Sync>),
 
+    #[cfg(feature = "tools")]
     #[error("Reqwest Error: {0}")]
     Reqwest(#[from] reqwest::Error),
 

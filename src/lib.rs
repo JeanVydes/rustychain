@@ -14,9 +14,9 @@ pub mod llm;
 pub mod orchestor;
 pub mod splitters;
 pub mod storage;
-pub mod util;
 #[cfg(feature = "tools")]
 pub mod tools;
+pub mod util;
 pub use error::*;
 #[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
 #[allow(ambiguous_glob_reexports)]
@@ -27,6 +27,10 @@ pub use storage::*;
 pub const BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
 
 pub mod prelude {
+    //! Prelude
+    //!
+    //! This module re-exports commonly used types and traits.
+
     #[cfg(feature = "tools")]
     pub use crate::ToolArgs;
     pub use crate::error::CoreError;
