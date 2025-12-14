@@ -2,9 +2,12 @@
 //! This crate provides core functionalities, including LLM integration, tool management,
 //! document splitting, and vector storage.
 
+#[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
+pub mod agent;
 #[cfg(target_os = "linux")]
 #[cfg(feature = "audio")]
 pub mod audio;
+pub mod chain;
 pub mod error;
 #[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
 pub mod llm;
@@ -31,5 +34,7 @@ pub mod prelude {
     };
     #[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
     pub use crate::llm::{LLM, LLMActions, LLMProvider};
+    #[cfg(feature = "macros")]
+    pub use rustychain_macros::*;
     pub use schemars::JsonSchema;
 }

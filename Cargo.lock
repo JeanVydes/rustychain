@@ -3120,6 +3120,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "gemini-rust",
+ "log",
  "ollama-rs",
  "openai-api-rs",
  "pgvector",
@@ -3127,6 +3128,7 @@ dependencies = [
  "rand 0.9.2",
  "reqwest",
  "rodio",
+ "rustychain-macros",
  "schemars 1.1.0",
  "scraper",
  "serde",
@@ -3144,6 +3146,15 @@ dependencies = [
  "url",
  "urlencoding",
  "webrtc-vad",
+]
+
+[[package]]
+name = "rustychain-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

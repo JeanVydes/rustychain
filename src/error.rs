@@ -2,7 +2,7 @@
 pub use gemini_rust::ClientError;
 #[cfg(feature = "ollama")]
 pub use ollama_rs::error::OllamaError;
-use std::error::Error as StdError;
+use std::{any::Any, error::Error as StdError, sync::Arc};
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Box<dyn StdError + Send + Sync>>;
@@ -12,6 +12,7 @@ pub enum CoreError {
     #[error("{0}")]
     Generic(String),
 
+    // PROVIDERS
     #[cfg(feature = "google")]
     #[error("Gemini API Error: {0}")]
     Gemini(#[from] ClientError),
@@ -23,6 +24,7 @@ pub enum CoreError {
     #[error("OpenAI Error: {0}")]
     OpenAI(String),
 
+    // OTHER ERRORS
     #[error("Serialization Error: {0}")]
     Serialization(#[from] serde_json::Error),
 
@@ -44,8 +46,25 @@ pub enum CoreError {
     #[error("Unsupported: {0}")]
     Unsupported(String),
 
+    #[error("Downcast Error")]
+    Downcast(Arc<dyn Any + Send + Sync>),
+
     #[error("Rate limit exceeded. Retry after {retry_after_secs} seconds")]
     RateLimit { retry_after_secs: u64 },
+
+    // CHAIN ERRORS
+    #[error("Error in step {index} ('{step_name:?}'): {source}")]
+    StepError {
+        index: usize,
+        step_name: Option<String>,
+        source: Box<dyn StdError + Send + Sync>,
+    },
+
+    #[error("Chain initial input not set")]
+    NotInput,
+
+    #[error("Chain has not been finalized yet")]
+    ChainNotFinalized,
 }
 
 impl CoreError {
