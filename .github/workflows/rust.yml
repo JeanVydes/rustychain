@@ -34,7 +34,6 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Run Clippy
-        # CAMBIADO a --features full
         run: cargo clippy --all-targets --features full -- -D warnings
 
   audit:
@@ -77,19 +76,15 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          # Ya estaba libssl-dev, pero lo mantengo por si acaso
           sudo apt-get install -y libssl-dev pkg-config
       
       - name: Build all features
-        # CAMBIADO a --features full
         run: cargo build --features full --verbose
       
       - name: Run lib tests (General)
-        # CAMBIADO a --features full
         run: cargo test --lib --features full --verbose
       
       - name: Run doc tests
-        # CAMBIADO a --features full
         run: cargo test --doc --features full
         continue-on-error: ${{ matrix.rust == 'nightly' }}
 
@@ -129,17 +124,14 @@ jobs:
           sudo apt-get install -y libssl-dev pkg-config
       
       - name: Build with all features
-        # CAMBIADO a --features full
         run: cargo build --features full --verbose
 
       - name: Run lib/integration tests with Postgres
-        # CAMBIADO a --features full
         run: cargo test --lib --features full --verbose
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
       
       - name: Run integration tests
-        # CAMBIADO a --features full
         run: cargo test --test '*' --features full
         continue-on-error: true
         env:
@@ -172,7 +164,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       
       - name: Check documentation
-        # CAMBIADO a --features full
         run: cargo doc --features full --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: -D warnings
@@ -212,7 +203,6 @@ jobs:
         run: cargo install cargo-tarpaulin
       
       - name: Generate coverage
-        # CAMBIADO a --features full
         run: cargo tarpaulin --features full --workspace --timeout 300 --out xml
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
