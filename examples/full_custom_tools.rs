@@ -1,7 +1,6 @@
 /// This is the full implementation of a custom tool in RustyChain.
 /// The `custom_tool.rs` example has been expanded here to show
 /// how to manually implement the necessary traits without using macros.
-
 use rustychain::{Message, prelude::*};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -57,7 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .generate()
         .await?;
 
-    println!("Response: {}", response);
+    log::info!("Response: {}", response);
 
     Ok(())
 }

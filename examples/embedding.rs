@@ -5,6 +5,11 @@ use rustychain::{LLM, LLMProvider};
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    dotenvy::dotenv().ok();
+    tracing_subscriber::fmt::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
+
     let auth = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
 
     let llm = Arc::new(
@@ -21,7 +26,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     //
     let vector = llm.embedding("Hello, world!", 1536).await?;
 
-    println!("Embedding: {:?}", vector);
+    log::info!("Embedding: {:?}", vector);
 
     Ok(())
 }

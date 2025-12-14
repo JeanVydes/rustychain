@@ -1,3 +1,7 @@
+//!! DuckDuckGo Search Tool
+//! 
+//! This module provides a tool for performing web searches using DuckDuckGo.
+
 use crate::{
     FnDeclarator, FunctionDeclaration,
     llm::function::{FnExecutor, ToolArgs},
@@ -7,7 +11,6 @@ use schemars::JsonSchema;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{debug, warn};
 
 /// Arguments for performing a DuckDuckGo search.
 #[derive(JsonSchema, Serialize, Deserialize, Debug, Clone)]
@@ -85,7 +88,7 @@ impl DuckDuckGoSearchTool {
             urlencoding::encode(&args.region)
         );
 
-        debug!("Searching DuckDuckGo: {}", url);
+        log::debug!("Searching DuckDuckGo: {}", url);
 
         let response = self.client.get(&url).send().await.map_err(|e| {
             crate::CoreError::Generic(format!("Failed to fetch search results: {}", e))
@@ -166,7 +169,7 @@ impl DuckDuckGoSearchTool {
             });
         }
 
-        debug!("Parsed {} results from DuckDuckGo", results.len());
+        log::debug!("Parsed {} results from DuckDuckGo", results.len());
         Ok(results)
     }
 
@@ -184,7 +187,7 @@ impl DuckDuckGoSearchTool {
             match urlencoding::decode(encoded_url) {
                 Ok(decoded) => return decoded.to_string(),
                 Err(e) => {
-                    warn!("Failed to decode URL: {}", e);
+                    log::error!("Failed to decode URL: {}", e);
                 }
             }
         }

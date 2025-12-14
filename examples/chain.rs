@@ -1,25 +1,36 @@
-use rustychain::chain::definitions::Chain;
-use rustychain::chain::step::{Runnable, downcast_io};
+use rustychain::chain::definitions::ChainBuilder;
+use rustychain::chain::step::Runnable;
 use rustychain::prelude::*;
 use rustychain::{LLM, LLMProvider, Message};
 use std::sync::Arc;
 
+#[derive(Debug, Clone)]
+pub struct Input {
+    text: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct Output {
+    parts: Vec<String>,
+}
+
 pub struct Formatter {}
 
 #[async_trait::async_trait]
-impl Runnable<String, String> for Formatter {
-    async fn run(&self, input: Arc<String>) -> rustychain::Result<String> {
-        Ok(input.trim().to_lowercase())
+impl Runnable<String, Output> for Formatter {
+    async fn run(&self, input: Arc<String>) -> rustychain::Result<Output> {
+        Ok(Output {
+            parts: input
+                .split(" ")
+                .map(|line| line.to_lowercase().trim().to_string())
+                .filter(|line| !line.is_empty())
+                .collect(),
+        })
     }
 }
 
 pub struct Summarizer {
     llm: Arc<LLM>,
-}
-
-#[derive(Clone)]
-pub struct Input {
-    text: String,
 }
 
 #[async_trait::async_trait]
@@ -42,6 +53,7 @@ impl Runnable<Input, String> for Summarizer {
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    dotenvy::dotenv().ok();
     tracing_subscriber::fmt::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .init();
@@ -57,32 +69,38 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'sta
             .build()?,
     );
 
-    let mut chain = Chain::<String, String>::new()
-        .add_step("summarization".to_owned(), Summarizer { llm: llm.clone() })
-        .add_step("formatting".to_owned(), Formatter {})
-        .start(EXAMPLE_TEST.to_owned());
+    let mut chain =
+        ChainBuilder::starts("summarization".to_owned(), Summarizer { llm: llm.clone() })
+            .add_step("formatting".to_owned(), Formatter {})
+            .set_input(Input {
+                text: EXAMPLE_TEST.to_owned(),
+            });
 
     while let Some(r) = chain.next().await {
         let step_result = r?;
         match step_result.name.as_str() {
             "summarization" => {
-                tracing::info!(
-                    "Summarization Output: {}",
-                    downcast_io::<String>(step_result.output)?
-                );
+                if let Some(input) = step_result.input.downcast_ref::<Input>() {
+                    log::info!("📥 Summarization Input: {}", &input.text[..100]);
+                }
+                if let Some(output) = step_result.output.downcast_ref::<String>() {
+                    log::info!("📤 Summarization Output: {}", output);
+                }
             }
             "formatting" => {
-                tracing::info!(
-                    "Formatting Output: {}",
-                    downcast_io::<String>(step_result.output)?
-                );
+                if let Some(input) = step_result.input.downcast_ref::<String>() {
+                    log::info!("📥 Formatting Input: {}", input);
+                }
+                if let Some(output) = step_result.output.downcast_ref::<String>() {
+                    log::info!("📤 Formatting Output: {}", output);
+                }
             }
             _ => {}
         };
     }
 
     let final_output = chain.finalize()?;
-    tracing::info!("Final Output: {}", downcast_io::<String>(final_output)?);
+    log::info!("Final Output: {:?}", final_output.parts);
 
     return Ok(());
 }

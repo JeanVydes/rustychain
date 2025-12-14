@@ -3116,6 +3116,7 @@ dependencies = [
  "base64 0.22.1",
  "cpal",
  "criterion",
+ "dotenvy",
  "fake",
  "futures-core",
  "futures-util",

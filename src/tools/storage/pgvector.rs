@@ -1,3 +1,8 @@
+//! pgvector
+//! 
+//! This module provides tools for integrating PostgreSQL with pgvector
+//! as a vector store.
+
 use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
 use crate::llm::{LLM, LLMActions};
 use crate::persistent::pgvector::{DocumentInput, SearchOptions};
@@ -8,7 +13,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::debug;
 
 #[derive(JsonSchema, Serialize, Deserialize, Debug)]
 pub struct SimpleRetrievalArgs {
@@ -65,7 +69,7 @@ pub struct RetrievalResult {
 #[async_trait::async_trait]
 impl FnExecutor<SimpleRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool {
     async fn call(&self, args: SimpleRetrievalArgs) -> crate::Result<RetrievalResult> {
-        debug!("RetrievalTool called with args: {:?}", args);
+        log::debug!("RetrievalTool called with args: {:?}", args);
         let query = self.llm.embedding(&args.query, 1536).await?;
         let store = self.store.lock().await;
         let results = store.similarity_search(query, 10).await?;
@@ -83,8 +87,8 @@ impl FnExecutor<SimpleRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool 
 #[async_trait::async_trait]
 impl FnExecutor<ComplexRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool {
     async fn call(&self, args: ComplexRetrievalArgs) -> crate::Result<RetrievalResult> {
-        debug!("RetrievalTool called with args: {:?}", args);
-        debug!("Generating embedding for query: {}", args.query);
+        log::debug!("RetrievalTool called with args: {:?}", args);
+        log::debug!("Generating embedding for query: {}", args.query);
         let query = self.llm.embedding(&args.query, 1536).await?;
         let store = self.store.lock().await;
         let context = store.search(query, args.config).await?;
@@ -102,7 +106,7 @@ impl FnExecutor<ComplexRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool
 #[async_trait::async_trait]
 impl FnExecutor<AugmentedArgs, serde_json::Value> for PgVectorAugmentedTool {
     async fn call(&self, args: AugmentedArgs) -> crate::Result<serde_json::Value> {
-        debug!("Generating embedding for query: {}", args.text);
+        log::debug!("Generating embedding for query: {}", args.text);
 
         let splitter = RecursiveCharacterTextSplitter::new(crate::SplitterConfig {
             chunk_size: 1024,
@@ -136,7 +140,7 @@ impl FnExecutor<AugmentedArgs, serde_json::Value> for PgVectorAugmentedTool {
 
         store.add_documents_batch(documents).await?;
 
-        debug!("Document added successfully");
+        log::debug!("Document added successfully");
 
         Ok(serde_json::json!({
             "status": "Document added successfully"

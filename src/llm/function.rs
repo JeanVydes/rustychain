@@ -294,15 +294,13 @@ where
 
 #[macro_export]
 macro_rules! declare_function {
-    ($name:expr, $description:expr, $args_ty:ty, $result_ty:ty, $executor:expr) => {
-        {
-            let schema = schemars::schema_for!($args_ty);
-            FunctionDeclaration {
-                name: $name,
-                description: $description,
-                parameters: schema.schema,
-                executor: std::sync::Arc::new($executor),
-            }
+    ($name:expr, $description:expr, $args_ty:ty, $result_ty:ty, $executor:expr) => {{
+        let schema = schemars::schema_for!($args_ty);
+        FunctionDeclaration {
+            name: $name,
+            description: $description,
+            parameters: schema.schema,
+            executor: std::sync::Arc::new($executor),
         }
-    };
+    }};
 }

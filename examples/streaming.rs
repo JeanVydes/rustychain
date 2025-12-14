@@ -4,6 +4,11 @@ use rustychain::{LLM, LLMProvider, Message};
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    dotenvy::dotenv().ok();
+    tracing_subscriber::fmt::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
+
     let auth = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set");
 
     let llm = LLM::builder()
@@ -23,7 +28,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match chunk {
             Ok(part) => {
                 if let Some(text) = part.message {
-                    print!("{}", text);
+                    log::info!("{}", text);
                 }
             }
             Err(_) => break,

@@ -1,2 +1,16 @@
 /target
 .sqlx/
+*.env
+.env.*
+.DS_Store
+.idea/
+.vscode/
+node_modules/
+*.log
+*.tmp
+*.bak
+*.swp
+coverage/
+dist/
+build/
+out/

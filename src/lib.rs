@@ -14,10 +14,12 @@ pub mod llm;
 pub mod orchestor;
 pub mod splitters;
 pub mod storage;
+pub mod util;
 #[cfg(feature = "tools")]
 pub mod tools;
 pub use error::*;
 #[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
+#[allow(ambiguous_glob_reexports)]
 pub use llm::*;
 pub use splitters::*;
 pub use storage::*;

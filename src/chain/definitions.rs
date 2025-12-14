@@ -37,10 +37,13 @@ where
         }
     }
 
-    pub fn add_step<R, I2, O2>(mut self, name: impl Into<String>, runnable: R) -> Self
+    // Each step, the chain is consumed and produces a new chain with updated output type
+    // Transformation: Chain<I, O> -> Chain<I, O2>
+    pub fn add_step<R, O2>(mut self, name: impl Into<String>, runnable: R) -> Chain<I, O2>
     where
-        R: Runnable<I2, O2> + 'static,
-        I2: Send + Sync + 'static + Clone,
+        // Type Constraint Enforcement: The Runnable must take the current Chain output (O)
+        // as its input and produce the new Chain output (O2).
+        R: Runnable<O, O2> + 'static,
         O2: Send + Sync + 'static,
     {
         let runnable = Arc::new(runnable);
@@ -51,22 +54,34 @@ where
             Arc::new(move |input: Arc<dyn Any + Send + Sync>| {
                 let r = runnable.clone();
                 Box::pin(async move {
-                    let typed_input = input
-                        .downcast::<I2>()
-                        .map_err(|err| crate::CoreError::Downcast(err))?;
+                    // Downcast input from Arc<dyn Any> to the expected input type O.
+                    // This is guaranteed to succeed at runtime because the compile-time
+                    // Type State (R: Runnable<O, O2>) enforced that the previous step produced O.
+                    let typed_input = input.downcast::<O>().map_err(crate::CoreError::Downcast)?;
 
                     let t = typed_input.clone();
+                    // Call the runnable with the downcasted input (O)
+                    // and produce the new output (O2).
                     let result = r.run(t).await?;
+                    // Box the O2 result back into Arc<dyn Any> for storage.
                     Ok(Arc::new(result) as Arc<dyn Any + Send + Sync>)
                 })
             }),
         ));
 
-        self
+        // Return a new Chain instance with the updated output type O2.
+        // This is the core mechanism of the Type State Pattern, fixing the chain's
+        // output type for all subsequent steps.
+        Chain {
+            steps: self.steps,
+            current_index: self.current_index,
+            current_value: self.current_value,
+            _phantom: PhantomData,
+        }
     }
 
     /// Set input and returns the chain
-    pub fn start(mut self, input: I) -> Self {
+    pub fn set_input(mut self, input: I) -> Self {
         self.current_value = Some(Arc::new(input));
         self.current_index = 0;
         self
@@ -106,12 +121,12 @@ where
                 };
 
                 log::trace!(
-                    "[{} ({}/{})] Step executed successfully. \n\n{}\n{}\n{}",
+                    "[{} ({}/{})] Step executed successfully. \n\n{}\n{:?}\n{}",
                     name,
                     self.current_index + 1,
                     self.steps.len(),
                     "----------------------------------------",
-                    format!("{:?}", step_result.output),
+                    step_result.output,
                     "----------------------------------------"
                 );
 
@@ -283,7 +298,7 @@ where
 
         let output = final_value
             .downcast::<O>()
-            .map_err(|err| crate::CoreError::Downcast(err))?;
+            .map_err(crate::CoreError::Downcast)?;
 
         Ok(output)
     }
@@ -316,6 +331,16 @@ where
     }
 }
 
+impl<I, O> Default for Chain<I, O>
+where
+    I: Send + Sync + 'static,
+    O: Send + Sync + 'static,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct StepResult {
     pub index: usize,
     pub name: String,
@@ -324,13 +349,54 @@ pub struct StepResult {
 }
 
 impl StepResult {
-    /// Helper para hacer downcast del valor a un tipo concreto
     pub fn downcast_ref<T: 'static>(&self) -> Option<&T> {
         self.output.downcast_ref::<T>()
     }
 
-    /// Consume el resultado y hace downcast
     pub fn downcast<T: Send + Sync + 'static>(self) -> Option<Arc<T>> {
         self.output.downcast::<T>().ok()
+    }
+}
+
+/// ChainBuilder for easier chain construction
+///
+/// Not explicitly chain input and output types
+pub struct ChainBuilder {}
+
+impl ChainBuilder {
+    /// Initializes a new Chain with the first step.
+    ///
+    /// This method is crucial as it sets the Chain's Input (I) and Output (O) types
+    /// based on the first Runnable (R: Runnable<I, O>).
+    pub fn starts<R, I, O>(name: impl ToString, runnable: R) -> Chain<I, O>
+    where
+        R: Runnable<I, O> + 'static,
+        I: Send + Sync + 'static + Clone,
+        O: Send + Sync + 'static,
+    {
+        let runnable = Arc::new(runnable);
+        let name_str = name.to_string();
+
+        // 1. Manually create the RunnableWrapper for the first step.
+        let wrapper: RunnableWrapper = Arc::new(move |input: Arc<dyn Any + Send + Sync>| {
+            let r = runnable.clone();
+            Box::pin(async move {
+                // The first step expects the Chain's overall Input type (I).
+                let typed_input = input.downcast::<I>().map_err(crate::CoreError::Downcast)?;
+
+                let t = typed_input.clone();
+                let result = r.run(t).await?;
+                // The output is O, which is the Chain's current output type.
+                Ok(Arc::new(result) as Arc<dyn Any + Send + Sync>)
+            })
+        });
+
+        // 2. Initialize the Chain<I, O> directly.
+        Chain {
+            steps: vec![(name_str, wrapper)],
+            current_index: 0,
+            current_value: None,
+            _phantom: PhantomData,
+        }
     }
 }
