@@ -164,19 +164,19 @@ impl Message {
         }
     }
 
-    pub fn user(message: &'static str) -> Self {
+    pub fn user(message: impl ToString) -> Self {
         Self::new(Role::User, Some(message.to_string()))
     }
 
-    pub fn assistant(message: &'static str) -> Self {
+    pub fn assistant(message: impl ToString) -> Self {
         Self::new(Role::Assistant, Some(message.to_string()))
     }
 
-    pub fn system(message: &'static str) -> Self {
+    pub fn system(message: impl ToString) -> Self {
         Self::new(Role::System, Some(message.to_string()))
     }
 
-    pub fn tool(message: &'static str) -> Self {
+    pub fn tool(message: impl ToString) -> Self {
         Self::new(Role::Tool, Some(message.to_string()))
     }
 

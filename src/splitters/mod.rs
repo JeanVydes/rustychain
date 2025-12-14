@@ -4,14 +4,14 @@
 //! semantic coherence and respecting chunk size limits.
 
 pub mod character_text_splitter;
-pub mod common;
+pub mod definitions;
 pub mod html_splitter;
 pub mod markdown_splitter;
 pub mod recursive_char_text_splitter;
 pub mod recursive_json_splitter;
 pub mod token_text_splitter;
 
-pub use common::*;
+pub use definitions::*;
 pub use html_splitter::*;
 pub use markdown_splitter::*;
 pub use recursive_char_text_splitter::*;

@@ -11,7 +11,6 @@ use testcontainers::{
     runners::AsyncRunner,
 };
 use tokio::sync::OnceCell;
-
 /// Default embedding dimensions for tests
 pub const TEST_DIMENSIONS: i32 = 384;
 
@@ -67,8 +66,8 @@ pub async fn get_test_db_url() -> &'static str {
 /// Generate a random embedding vector of specified dimensions
 pub fn random_embedding(dims: i32) -> Vec<f32> {
     use rand::Rng;
-    let mut rng = rand::thread_rng();
-    (0..dims).map(|_| rng.r#gen_range(-1.0..1.0)).collect()
+    let mut rng = rand::rng();
+    (0..dims).map(|_| rng.random_range(-1.0..1.0)).collect()
 }
 
 /// Generate a normalized random embedding (unit vector)
@@ -81,12 +80,12 @@ pub fn normalized_embedding(dims: i32) -> Vec<f32> {
 /// Generate similar embeddings (for testing similarity search)
 pub fn similar_embeddings(base: &[f32], count: usize, variance: f32) -> Vec<Vec<f32>> {
     use rand::Rng;
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     (0..count)
         .map(|_| {
             base.iter()
-                .map(|&x| x + rng.r#gen_range(-variance..variance))
+                .map(|&x| x + rng.random_range(-variance..variance))
                 .collect()
         })
         .collect()
@@ -95,7 +94,7 @@ pub fn similar_embeddings(base: &[f32], count: usize, variance: f32) -> Vec<Vec<
 /// Create a unique table name for test isolation
 pub fn unique_table_name() -> String {
     use rand::Rng;
-    let suffix: u32 = rand::thread_rng().r#gen();
+    let suffix: u32 = rand::rng().random_range(1000..9999);
     format!("test_documents_{}", suffix)
 }
 

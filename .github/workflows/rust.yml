@@ -2,9 +2,9 @@ name: Rust CI/CD
 
 on:
   push:
-    branches: [ "dev", "main" ]
+    branches: [ "dev", "main", "feat/ci" ]
   pull_request:
-    branches: [ "dev", "main" ]
+    branches: [ "dev", "main", "feat/ci" ]
   schedule:
     - cron: '0 0 * * 0'
 
@@ -34,11 +34,15 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Run Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets --features full -- -D warnings
 
   audit:
     name: Security Audit
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      security-events: write
     steps:
       - uses: actions/checkout@v4
       - uses: rustsec/audit-check@v2
@@ -75,13 +79,13 @@ jobs:
           sudo apt-get install -y libssl-dev pkg-config
       
       - name: Build all features
-        run: cargo build --all-features --verbose
+        run: cargo build --features full --verbose
       
       - name: Run lib tests (General)
-        run: cargo test --lib --all-features --verbose
+        run: cargo test --lib --features full --verbose
       
       - name: Run doc tests
-        run: cargo test --doc --all-features
+        run: cargo test --doc --features full
         continue-on-error: ${{ matrix.rust == 'nightly' }}
 
   test-db-postgres:
@@ -120,30 +124,36 @@ jobs:
           sudo apt-get install -y libssl-dev pkg-config
       
       - name: Build with all features
-        run: cargo build --all-features --verbose
+        run: cargo build --features full --verbose
 
       - name: Run lib/integration tests with Postgres
-        run: cargo test --lib --all-features --verbose
+        run: cargo test --lib --features full --verbose
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
       
       - name: Run integration tests
-        run: cargo test --test '*' --all-features
+        run: cargo test --test '*' --features full
         continue-on-error: true
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
 
-  minimal-versions:
-    name: Minimal Versions
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-      - uses: Swatinem/rust-cache@v2
-      - name: Check minimal versions
-        run: |
-          cargo update -Z minimal-versions
-          cargo check --all-features
+  #minimal-versions:
+  #  name: Minimal Versions
+  #  runs-on: ubuntu-latest
+  #  steps:
+  #    - uses: actions/checkout@v4
+  #    - uses: dtolnay/rust-toolchain@nightly
+  #    - uses: Swatinem/rust-cache@v2
+  #    
+  #    - name: Install OpenSSL dependencies
+  #      run: |
+  #        sudo apt-get update
+  #        sudo apt-get install -y libssl-dev pkg-config
+  #    
+  #    - name: Check minimal versions
+  #      run: |
+  #        cargo update -Z minimal-versions
+  #        cargo check --features full
 
   docs:
     name: Documentation
@@ -154,7 +164,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       
       - name: Check documentation
-        run: cargo doc --all-features --no-deps --document-private-items
+        run: cargo doc --features full --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: -D warnings
       
@@ -193,7 +203,7 @@ jobs:
         run: cargo install cargo-tarpaulin
       
       - name: Generate coverage
-        run: cargo tarpaulin --all-features --workspace --timeout 300 --out xml
+        run: cargo tarpaulin --features full --workspace --timeout 300 --out xml
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
       

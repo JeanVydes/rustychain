@@ -2,7 +2,7 @@ use rustychain::{Message, prelude::*};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(JsonSchema, Serialize, Deserialize, Debug, Clone)]
+#[derive(JsonSchema, Serialize, Deserialize, Debug, Clone, ToolArgs)]
 pub struct SumArgs {
     #[schemars(description = "First integer to sum.")]
     pub a: i64,
@@ -10,31 +10,27 @@ pub struct SumArgs {
     pub b: i64,
 }
 
-impl ToolArgs for SumArgs {}
-
-#[derive(Clone)]
+#[declare_function(
+    name = "sum_integers",
+    description = "Returns the sum of two integers.",
+    args = SumArgs,
+    result = i64
+)]
 pub struct SumTool {}
 
-#[async_trait::async_trait]
-impl FnExecutor<SumArgs, i64> for SumTool {
-    async fn call(&self, args: SumArgs) -> rustychain::Result<i64> {
+impl SumTool {
+    pub async fn execute(&self, args: SumArgs) -> rustychain::Result<i64> {
         Ok(args.a + args.b)
-    }
-}
-
-impl FnDeclarator<SumArgs, i64> for SumTool {
-    fn declare(&self) -> FunctionDeclaration<SumArgs, i64> {
-        FunctionDeclaration {
-            name: "sum_integers",
-            description: "Returns the sum of two integers.",
-            parameters: schemars::schema_for!(SumArgs),
-            executor: std::sync::Arc::new(self.clone()),
-        }
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    dotenvy::dotenv().ok();
+    tracing_subscriber::fmt::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
+
     let auth = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
 
     let sum_tool = SumTool {};
@@ -53,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .generate()
         .await?;
 
-    println!("Response: {}", response);
+    log::info!("Response: {}", response);
 
     Ok(())
 }

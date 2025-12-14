@@ -14,7 +14,6 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
-use tracing::{debug, info, warn};
 
 /// Patterns that indicate the command is waiting for user input.
 const INPUT_PATTERNS: &[&str] = &[
@@ -319,7 +318,7 @@ impl CommandTool {
 
         let mut cmd = self.build_command(&args);
 
-        info!("Executing command: {} {:?}", args.command, args.args);
+        log::debug!("Executing command: {} {:?}", args.command, args.args);
 
         let mut child = cmd.spawn().map_err(|e| {
             crate::CoreError::Generic(format!("Failed to spawn command '{}': {}", args.command, e))
@@ -377,7 +376,7 @@ impl CommandTool {
                 match stdout_reader.read_line(&mut line).await {
                     Ok(0) => break, // EOF
                     Ok(_) => {
-                        debug!("stdout: {}", line.trim_end());
+                        log::debug!("stdout: {}", line.trim_end());
                         stdout_output.lock().await.push_str(&line);
 
                         // Check if we need input
@@ -390,7 +389,7 @@ impl CommandTool {
                         }
                     }
                     Err(e) => {
-                        warn!("stdout read error: {}", e);
+                        log::trace!("stdout read error: {}", e);
                         break;
                     }
                 }
@@ -404,7 +403,7 @@ impl CommandTool {
                 match stderr_reader.read_line(&mut line).await {
                     Ok(0) => break, // EOF
                     Ok(_) => {
-                        debug!("stderr: {}", line.trim_end());
+                        log::debug!("stderr: {}", line.trim_end());
                         stderr_output.lock().await.push_str(&line);
 
                         // Check stderr for input prompts too
@@ -417,7 +416,7 @@ impl CommandTool {
                         }
                     }
                     Err(e) => {
-                        warn!("stderr read error: {}", e);
+                        log::trace!("stderr read error: {}", e);
                         break;
                     }
                 }
@@ -437,7 +436,7 @@ impl CommandTool {
 
                     // Handle input prompts from reader tasks
                     Some((source, line, pattern)) = prompt_rx.recv() => {
-                        info!("Detected input prompt in {}: {:?}", source, pattern);
+                        log::debug!("Detected input prompt in {}: {:?}", source, pattern);
 
                         // Build context for callback
                         let context = InputContext {
@@ -463,25 +462,25 @@ impl CommandTool {
                                                 format!("{}\n", input)
                                             };
                                             if let Err(e) = stdin.write_all(input_with_newline.as_bytes()).await {
-                                                warn!("Failed to write input: {}", e);
+                                                log::trace!("Failed to write input: {}", e);
                                             }
                                             if let Err(e) = stdin.flush().await {
-                                                warn!("Failed to flush stdin: {}", e);
+                                                log::trace!("Failed to flush stdin: {}", e);
                                             }
                                         }
                                     }
                                     InputAction::Cancel => {
-                                        info!("Callback requested cancellation");
+                                        log::debug!("Callback requested cancellation");
                                         *cancelled_for_loop.lock().await = Some("Cancelled by callback".to_string());
                                         let _ = child.kill().await;
                                         break;
                                     }
                                     InputAction::Skip => {
-                                        debug!("Skipping input prompt");
+                                        log::debug!("Skipping input prompt");
                                         // Do nothing, just continue
                                     }
                                     InputAction::Interrupt => {
-                                        info!("Sending interrupt signal");
+                                        log::debug!("Sending interrupt signal");
                                         #[cfg(unix)]
                                         {
                                             if let Some(pid) = child.id() {
@@ -496,14 +495,14 @@ impl CommandTool {
                                         }
                                     }
                                     InputAction::SendEof => {
-                                        info!("Closing stdin (EOF)");
+                                        log::debug!("Closing stdin (EOF)");
                                         let mut guard = stdin_for_loop.lock().await;
                                         *guard = None; // Drop stdin to send EOF
                                     }
                                 }
                             }
                             Err(e) => {
-                                warn!("Failed to get input action: {}", e);
+                                log::trace!("Failed to get input action: {}", e);
                             }
                         }
                     }
@@ -524,7 +523,7 @@ impl CommandTool {
             match timeout(dur, process_loop).await {
                 Ok(result) => result,
                 Err(_) => {
-                    warn!("Command timed out after {} seconds", args.timeout_secs);
+                    log::trace!("Command timed out after {} seconds", args.timeout_secs);
                     let _ = child.kill().await;
 
                     // Wait for reader tasks
@@ -584,7 +583,7 @@ impl FnExecutor<CommandArgs, serde_json::Value> for CommandTool {
             })?;
 
             let pid = child.id();
-            info!("Started background process with PID: {:?}", pid);
+            log::debug!("Started background process with PID: {:?}", pid);
 
             return Ok(serde_json::json!({
                 "status": "background",

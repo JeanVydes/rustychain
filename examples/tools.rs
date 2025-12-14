@@ -4,6 +4,11 @@ use rustychain::{LLM, LLMProvider, Message};
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    dotenvy::dotenv().ok();
+    tracing_subscriber::fmt::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
+
     let auth = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
 
     let duckduckgo_tool = DuckDuckGoSearchTool::new();
@@ -22,7 +27,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .generate()
         .await?;
 
-    println!("Response: {}", response);
+    log::info!("Response: {}", response);
 
     Ok(())
 }
