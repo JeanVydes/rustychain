@@ -2,10 +2,13 @@
 //!
 //! Tests LLM creation, configuration, and action methods
 
-use rustychain::{ToolCallingMode, llm::{
-    FnDeclarator, FnExecutor, FunctionDeclaration, GenerationConfig, LLM, LLMProvider, Message,
-    Role, ThinkingMode, ToolArgs,
-}};
+use rustychain::{
+    ToolCallingMode,
+    llm::{
+        FnDeclarator, FnExecutor, FunctionDeclaration, GenerationConfig, LLM, LLMProvider, Message,
+        Role, ThinkingMode, ToolArgs,
+    },
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

@@ -1,3 +1,4 @@
+#![cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
 //! Unit tests for LLM Builder
 //!
 //! Tests the builder pattern for LLM construction

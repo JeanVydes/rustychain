@@ -669,10 +669,19 @@ mod tests {
             .with_body(create_mock_html(5))
             .create_async()
             .await;
+        // Make a request to the mock server so the mock is exercised
+        let url = format!("{}/html/?q=test", server.url());
+        let resp = reqwest::get(&url)
+            .await
+            .expect("failed to request mock server");
+        let body = resp.text().await.expect("failed to read mock response");
 
-        // Note: This test demonstrates the structure but won't work
-        // without modifying the tool to accept a custom base URL
-        // In production, you'd inject the server URL for testing
+        // Parse results using the tool's parser to ensure HTML format is handled
+        let tool = DuckDuckGoSearchTool::new();
+        let parsed = tool
+            .parse_results(&body, 5)
+            .expect("failed to parse results");
+        assert_eq!(parsed.len(), 5);
 
         mock.assert_async().await;
     }

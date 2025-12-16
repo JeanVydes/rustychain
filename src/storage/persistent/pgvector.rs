@@ -129,9 +129,28 @@ impl VectorStore {
 
     /// Ensure the vector table exists with proper schema
     async fn ensure_table_exists(&self) -> crate::Result<()> {
-        sqlx::query("CREATE EXTENSION IF NOT EXISTS vector")
+        // CREATE EXTENSION should be idempotent, but in some environments
+        // concurrent test runs or older Postgres versions may return a
+        // duplicate-key error when the extension already exists. Detect
+        // that specific database error (Postgres code 23505) and ignore it.
+        match sqlx::query("CREATE EXTENSION IF NOT EXISTS vector")
             .execute(&self.pool)
-            .await?;
+            .await
+        {
+            Ok(_) => {}
+            Err(e) => {
+                let ignore = match &e {
+                    sqlx::Error::Database(db_err) => {
+                        matches!(db_err.code(), Some(code) if code == "23505")
+                    }
+                    _ => false,
+                };
+
+                if !ignore {
+                    return Err(Box::new(e));
+                }
+            }
+        }
 
         let query = format!(
             r#"

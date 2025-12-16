@@ -2,7 +2,10 @@ use std::{any::Any, marker::PhantomData, sync::Arc};
 
 use futures_core::future::BoxFuture;
 
-use crate::chain::{StepResult, step::{Runnable, RunnableWrapper}};
+use crate::chain::{
+    StepResult,
+    step::{Runnable, RunnableWrapper},
+};
 
 pub type IO = Arc<dyn Any + Send + Sync>;
 

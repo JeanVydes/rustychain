@@ -5,8 +5,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use crate::{
+    llm::{GenerationConfig, LLM, conversation::Message},
     prelude::*,
-    llm::{GenerationConfig, LLM, conversation::Message}
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash, PartialOrd, Ord)]

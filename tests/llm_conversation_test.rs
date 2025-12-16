@@ -1,3 +1,4 @@
+#![cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
 //! Unit tests for Conversation types
 //!
 //! Tests Message, Role conversions and serialization consistency

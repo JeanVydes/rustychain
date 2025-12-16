@@ -1,3 +1,4 @@
+#![cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
 //! Unit tests for Function Calling system
 //!
 //! Tests FunctionDeclaration, FnExecutor, FnDeclarator traits

@@ -1,3 +1,4 @@
+#![cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
 //! Unit tests for Inference builder pattern
 //!
 //! Tests that Inference correctly builds requests for generate/stream

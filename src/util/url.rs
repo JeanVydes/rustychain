@@ -18,11 +18,11 @@ impl UrlValidator {
         }
 
         // Reject localhost and private IP ranges (SSRF protection)
-        if let Some(host) = parsed.host_str() {
-            if Self::is_private_or_local(host) {
-                log::trace!("Rejected private/local URL: {}", host);
-                return None;
-            }
+        if let Some(host) = parsed.host_str()
+            && Self::is_private_or_local(host)
+        {
+            log::trace!("Rejected private/local URL: {}", host);
+            return None;
         }
 
         Some(parsed.to_string())

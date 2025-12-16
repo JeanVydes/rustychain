@@ -4,5 +4,5 @@
 
 pub mod definitions;
 pub mod duckduckgo;
-pub use duckduckgo::*;
 pub use definitions::*;
+pub use duckduckgo::*;
