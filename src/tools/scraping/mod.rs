@@ -37,7 +37,7 @@ impl FnExecutor<ScrappingArgs, ScrappingResult> for ScrappingTool {
                 args.options
                     .as_ref()
                     .and_then(|opts| opts.user_agent.clone())
-                    .unwrap_or_else(|| UserAgentFactory::random()),
+                    .unwrap_or_else(UserAgentFactory::random),
             )
             .build()
             .map_err(crate::CoreError::Reqwest)?;

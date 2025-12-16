@@ -54,7 +54,7 @@ impl Inference {
     pub async fn generate(&mut self) -> crate::Result<Message> {
         return self
             .llm
-            .generation(&mut self.history, self.message.clone(), self.config.clone())
+            .generation(&self.history, &self.message, self.config.clone())
             .await;
     }
 
@@ -63,7 +63,7 @@ impl Inference {
     ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<Message>> + Send + 'static>>> {
         return self
             .llm
-            .stream(&mut self.history, self.message.clone(), self.config.clone())
+            .stream(&self.history, &self.message, self.config.clone())
             .await;
     }
 }

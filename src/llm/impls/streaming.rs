@@ -10,8 +10,8 @@ impl LLMStreaming for LLM {
     #[allow(unreachable_patterns)]
     async fn stream(
         &self,
-        history: &mut Vec<Message>,
-        message: Message,
+        history: &[Message],
+        message: &Message,
         config: GenerationConfig,
     ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<Message>> + Send + 'static>>> {
         match self.provider {

@@ -51,7 +51,7 @@ impl ThinkingMode {
     pub fn to_google(&self) -> i32 {
         match self {
             ThinkingMode::None => 0,
-            ThinkingMode::Sized(size) => size.clone(),
+            ThinkingMode::Sized(size) => *size,
             // Google doesnt support effort levels directly, set them dynamically
             _ => -1,
         }
@@ -88,7 +88,7 @@ impl ThinkingMode {
             ThinkingMode::Sized(size) => Some(openai_api_rs::v1::chat_completion::Reasoning {
                 mode: Some(
                     openai_api_rs::v1::chat_completion::ReasoningMode::MaxTokens {
-                        max_tokens: size.clone() as i64,
+                        max_tokens: *size as i64,
                     },
                 ),
                 exclude: Some(false),
@@ -99,10 +99,7 @@ impl ThinkingMode {
 
     #[cfg(feature = "ollama")]
     pub fn to_ollama(&self) -> bool {
-        match self {
-            ThinkingMode::None => false,
-            _ => true,
-        }
+        !matches!(self, ThinkingMode::None)
     }
 }
 
@@ -319,8 +316,8 @@ pub trait LLMGeneration {
     /// Performs text generation based on the provided history and message.
     async fn generation(
         &self,
-        history: &mut Vec<Message>,
-        message: Message,
+        history: &[Message],
+        message: &Message,
         config: GenerationConfig,
     ) -> crate::Result<Message>;
 }
@@ -330,8 +327,8 @@ pub trait LLMStreaming {
     /// Streams text generation results based on the provided history and message.
     async fn stream(
         &self,
-        history: &mut Vec<Message>,
-        message: Message,
+        history: &[Message],
+        message: &Message,
         config: GenerationConfig,
     ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<Message>> + Send + 'static>>>;
 }
@@ -446,15 +443,14 @@ impl LLM {
     #[cfg(feature = "google")]
     pub fn new_google_request(
         &self,
-        history: &mut Vec<Message>,
-        message: Message,
+        history: &[Message],
+        message: &Message,
         config: GenerationConfig,
     ) -> crate::Result<ContentBuilder> {
         let client = self.get_gemini_client()?;
-
-        history.push(message);
-        let history: Vec<gemini_rust::Message> = history.iter().map(|m| m.to_gemini()).collect();
-
+        let mut history: Vec<gemini_rust::Message> =
+            history.iter().map(|m| m.to_gemini()).collect();
+        history.push(message.to_gemini());
         let mut req = client
             .generate_content()
             .with_system_instruction(self.system_prompt.clone())
@@ -494,8 +490,8 @@ impl LLM {
     #[cfg(feature = "openai")]
     pub fn new_openai_request(
         &self,
-        history: &mut Vec<Message>,
-        message: Message,
+        history: &[Message],
+        message: &Message,
         config: GenerationConfig,
     ) -> crate::Result<ChatCompletionRequest> {
         // Build messages with system prompt first
@@ -545,8 +541,8 @@ impl LLM {
     #[cfg(feature = "openai")]
     pub fn new_openai_stream_request(
         &self,
-        history: &mut Vec<Message>,
-        message: Message,
+        history: &[Message],
+        message: &Message,
         config: GenerationConfig,
     ) -> crate::Result<ChatCompletionStreamRequest> {
         // Build messages with system prompt first
@@ -596,14 +592,15 @@ impl LLM {
     #[cfg(feature = "ollama")]
     pub fn new_ollama_request(
         &self,
-        history: &mut Vec<Message>,
-        message: Message,
+        history: &[Message],
+        message: &Message,
         config: GenerationConfig,
     ) -> crate::Result<ChatMessageRequest> {
         use ollama_rs::{generation::parameters::JsonStructure, models::ModelOptions};
 
         let mut ollama_messages: Vec<ChatMessage> = history.iter().map(|m| m.to_ollama()).collect();
         ollama_messages.push(message.to_ollama());
+
         let mut req = ChatMessageRequest::new(self.name.clone(), ollama_messages)
             .think(config.thinking.to_ollama())
             .tools(
@@ -615,8 +612,8 @@ impl LLM {
             .options(
                 ModelOptions::default()
                     .top_k(config.top_k as u32)
-                    .top_p(config.top_p as f32)
-                    .temperature(config.temperature as f32)
+                    .top_p(config.top_p)
+                    .temperature(config.temperature)
                     .stop(config.stop_sequences.clone().unwrap_or_default()),
             );
 

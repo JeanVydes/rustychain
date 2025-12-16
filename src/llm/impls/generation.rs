@@ -6,8 +6,8 @@ impl LLMGeneration for LLM {
     #[allow(unreachable_patterns)]
     async fn generation(
         &self,
-        history: &mut Vec<Message>,
-        message: Message,
+        history: &[Message],
+        message: &Message,
         config: GenerationConfig,
     ) -> crate::Result<Message> {
         match self.provider {
