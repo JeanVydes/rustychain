@@ -279,7 +279,7 @@ jobs:
         run: cargo install cargo-udeps --locked
       
       - name: Check unused dependencies
-        run: cargo +nightly udeps --all-targets
+        run: cargo +nightly udeps --all-targets --features full
 
   dependency-review:
     name: Dependency Review
