@@ -2,11 +2,10 @@
 //!
 //! Tests LLM creation, configuration, and action methods
 
-use rustychain::llm::inference::Inference;
-use rustychain::llm::{
+use rustychain::{ToolCallingMode, llm::{
     FnDeclarator, FnExecutor, FunctionDeclaration, GenerationConfig, LLM, LLMProvider, Message,
     Role, ThinkingMode, ToolArgs,
-};
+}};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -236,9 +235,14 @@ fn test_inference_creation_for_llm() {
         .set_provider(LLMProvider::Google)
         .build()
         .unwrap();
+    let llm = LLM::builder()
+        .set_name("test".to_owned())
+        .set_provider(LLMProvider::Google)
+        .build()
+        .unwrap();
 
-    let inference = Inference::new()
-        .with_message(user_message("Hello"))
+    let inference = llm
+        .inference(user_message("Hello"))
         .with_config(GenerationConfig {
             temperature: 0.7,
             top_p: 0.9,
@@ -249,10 +253,11 @@ fn test_inference_creation_for_llm() {
             stop_sequences: None,
             output_schema: None,
             response_mime_type: None,
+            tool_calling_mode: ToolCallingMode::Auto,
         });
 
     // Inference should be compatible with any LLM
-    assert!(inference.message.is_some());
+    assert_eq!(inference.message.role, Role::User);
     assert_eq!(inference.config.temperature, 0.7);
 }
 

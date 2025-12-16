@@ -23,7 +23,6 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // The dimensionality depends on the model/provider used
     // And own requirements
     // In this example `gemini-embedding-001` supports up to 3072 dimensions, but we use 1536
-    //
     let vector = llm.embedding("Hello, world!", 1536).await?;
 
     log::info!("Embedding: {:?}", vector);

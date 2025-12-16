@@ -1,4 +1,4 @@
-use crate::{FnDeclarator, FnExecutor, FunctionDeclaration, ToolArgs, util::random_http_agent};
+use crate::{FnDeclarator, FnExecutor, FunctionDeclaration, ToolArgs, util::UserAgentFactory};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -37,7 +37,7 @@ impl FnExecutor<ScrappingArgs, ScrappingResult> for ScrappingTool {
                 args.options
                     .as_ref()
                     .and_then(|opts| opts.user_agent.clone())
-                    .unwrap_or_else(|| random_http_agent()),
+                    .unwrap_or_else(|| UserAgentFactory::random()),
             )
             .build()
             .map_err(crate::CoreError::Reqwest)?;

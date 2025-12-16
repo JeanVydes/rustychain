@@ -69,6 +69,12 @@ pub enum CoreError {
     #[error("No Content")]
     NoContent,
 
+    #[error("Operation timed out")]
+    Timeout,
+
+    #[error("Maximum depth reached")]
+    MaxDepthReached,
+
     /// SQLx database errors
     #[error("Database Error: {0}")]
     Sqlx(#[from] sqlx::Error),
@@ -105,6 +111,16 @@ pub enum CoreError {
     /// Chain has not been finalized yet
     #[error("Chain has not been finalized yet")]
     ChainNotFinalized,
+
+    #[error("Search Error for query '{query:?}': {source:?}")]
+    Search {
+        query: Option<String>,
+        source: Option<Box<dyn StdError + Send + Sync>>,
+        feedback: Option<String>,
+    },
+
+    #[error("Tool functions results not returned results")]
+    NotFunctionResults,
 }
 
 /// CoreError utility methods

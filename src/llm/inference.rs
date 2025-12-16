@@ -1,4 +1,3 @@
-use crate::llm::definitions::LLMActions;
 use futures_core::stream::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -6,8 +5,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use crate::{
-    CoreError,
-    llm::{GenerationConfig, LLM, conversation::Message},
+    prelude::*,
+    llm::{GenerationConfig, LLM, conversation::Message}
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash, PartialOrd, Ord)]
@@ -20,39 +19,21 @@ pub enum InferenceMode {
 #[derive(Clone, Debug)]
 pub struct Inference {
     pub history: Vec<Message>,
-    pub message: Option<Message>,
-    pub audio: Option<Vec<u8>>,
+    pub message: Message,
     pub output_schema: Option<Value>,
     pub config: GenerationConfig,
-    pub llm: Option<Arc<LLM>>,
-}
-
-impl Default for Inference {
-    fn default() -> Self {
-        Self::new()
-    }
+    pub llm: Arc<LLM>,
 }
 
 impl Inference {
-    pub fn new() -> Self {
+    pub fn new(message: Message, llm: Arc<LLM>) -> Self {
         Self {
             history: vec![],
-            message: None,
-            audio: None,
+            message,
             output_schema: None,
             config: GenerationConfig::default(),
-            llm: None,
+            llm,
         }
-    }
-
-    pub fn with_message(mut self, message: Message) -> Self {
-        self.message = Some(message);
-        self
-    }
-
-    pub fn with_audio(mut self, audio: Vec<u8>) -> Self {
-        self.audio = Some(audio);
-        self
     }
 
     pub fn with_history(mut self, history: Vec<Message>) -> Self {
@@ -70,60 +51,19 @@ impl Inference {
         self
     }
 
-    pub fn with_llm(mut self, llm: Arc<LLM>) -> Self {
-        self.llm = Some(llm);
-        self
-    }
-
     pub async fn generate(&mut self) -> crate::Result<Message> {
-        match &self.llm {
-            Some(llm) => {
-                if let Some(audio) = &self.audio {
-                    return llm
-                        .generation_with_audio_input(
-                            &mut self.history,
-                            audio.clone(),
-                            self.config.clone(),
-                        )
-                        .await;
-                } else if let Some(message) = &self.message {
-                    return llm
-                        .generation(&mut self.history, message.clone(), self.config.clone())
-                        .await;
-                }
-
-                Err(Box::from(CoreError::Generic(
-                    "No message or audio provided".to_owned(),
-                )))
-            }
-            None => Err(Box::from(CoreError::Generic("No LLM provided".to_owned()))),
-        }
+        return self
+            .llm
+            .generation(&mut self.history, self.message.clone(), self.config.clone())
+            .await;
     }
 
     pub async fn stream(
         &mut self,
     ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<Message>> + Send + 'static>>> {
-        match &self.llm {
-            Some(llm) => {
-                if let Some(audio) = &self.audio {
-                    return llm
-                        .stream_with_audio_input(
-                            &mut self.history,
-                            audio.clone(),
-                            self.config.clone(),
-                        )
-                        .await;
-                } else if let Some(message) = &self.message {
-                    return llm
-                        .stream(&mut self.history, message.clone(), self.config.clone())
-                        .await;
-                }
-
-                Err(Box::from(CoreError::Generic(
-                    "No message or audio provided".to_owned(),
-                )))
-            }
-            None => Err(Box::from(CoreError::Generic("No LLM provided".to_owned()))),
-        }
+        return self
+            .llm
+            .stream(&mut self.history, self.message.clone(), self.config.clone())
+            .await;
     }
 }

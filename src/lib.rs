@@ -39,7 +39,7 @@ pub mod prelude {
         AnyFunction, FnDeclarator, FnExecutor, FunctionDeclaration, FunctionResult,
     };
     #[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
-    pub use crate::llm::{LLM, LLMActions, LLMProvider};
+    pub use crate::llm::{LLM, LLMProvider, LLMGeneration, LLMStreaming, LLMEmbedding};
     #[cfg(feature = "macros")]
     pub use rustychain_macros::*;
     pub use schemars::JsonSchema;

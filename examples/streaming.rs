@@ -1,5 +1,4 @@
 use futures_util::stream::StreamExt;
-use rustychain::prelude::*;
 use rustychain::{LLM, LLMProvider, Message};
 
 #[tokio::main]
@@ -19,8 +18,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .build()?;
 
     let mut stream = llm
-        .inference()
-        .with_message(Message::user("Tell me a joke about computers."))
+        .inference(Message::user("Tell me a joke about computers."))
         .stream()
         .await?;
 

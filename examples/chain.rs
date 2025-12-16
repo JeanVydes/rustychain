@@ -1,5 +1,4 @@
-use rustychain::chain::definitions::ChainBuilder;
-use rustychain::chain::step::Runnable;
+use rustychain::chain::Chain;
 use rustychain::prelude::*;
 use rustychain::{LLM, LLMProvider, Message};
 use std::sync::Arc;
@@ -14,40 +13,47 @@ pub struct Output {
     parts: Vec<String>,
 }
 
-pub struct Formatter {}
-
-#[async_trait::async_trait]
-impl Runnable<String, Output> for Formatter {
-    async fn run(&self, input: Arc<String>) -> rustychain::Result<Output> {
-        Ok(Output {
-            parts: input
-                .split(" ")
-                .map(|line| line.to_lowercase().trim().to_string())
-                .filter(|line| !line.is_empty())
-                .collect(),
-        })
-    }
-}
-
+#[runnable(
+    input = Input,
+    output = String,
+)]
 pub struct Summarizer {
     llm: Arc<LLM>,
 }
 
-#[async_trait::async_trait]
-impl Runnable<Input, String> for Summarizer {
-    async fn run(&self, input: Arc<Input>) -> rustychain::Result<String> {
-        let prompt: String = format!(
-            "Summarize the following text in one sentence:\n\n{}",
+impl Summarizer {
+    pub async fn execute(&self, input: Input) -> rustychain::Result<String> {
+        let prompt = format!(
+            "Summarize the following text in a concise manner:\n\n{}",
             input.text
         );
+
         let response = self
             .llm
-            .inference()
-            .with_message(Message::user(&prompt))
+            .inference(Message::user(prompt))
             .generate()
-            .await?;
+            .await?
+            .message
+            .ok_or_else(|| rustychain::CoreError::NoContent)?;
 
-        Ok(response.message.unwrap_or_default())
+        Ok(response)
+    }
+}
+
+#[runnable(
+    input = String,
+    output = Output,
+)]
+pub struct Formatter {}
+
+impl Formatter {
+    pub async fn execute(&self, input: String) -> rustychain::Result<Output> {
+        let parts: Vec<String> = input
+            .to_lowercase()
+            .split(' ')
+            .map(|s| s.trim().to_string())
+            .collect();
+        Ok(Output { parts })
     }
 }
 
@@ -60,6 +66,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'sta
 
     let auth = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
 
+    // Initialize the LLM
     let llm = Arc::new(
         LLM::builder()
             .set_authorization(auth)
@@ -69,36 +76,39 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'sta
             .build()?,
     );
 
-    let mut chain =
-        ChainBuilder::starts("summarization".to_owned(), Summarizer { llm: llm.clone() })
-            .add_step("formatting".to_owned(), Formatter {})
-            .set_input(Input {
-                text: EXAMPLE_TEST.to_owned(),
-            });
+    // Build a chain with two steps: Summarization and Formatting
+    let mut chain = Chain::new()
+        .add_step("summarization".to_owned(), Summarizer { llm })
+        .add_step("formatting".to_owned(), Formatter {})
+        .set_input(Input {
+            text: EXAMPLE_TEST.to_owned(),
+        });
 
+    // You can also inspect each step's result as they are processed
     while let Some(r) = chain.next().await {
         let step_result = r?;
         match step_result.name.as_str() {
             "summarization" => {
                 if let Some(input) = step_result.input.downcast_ref::<Input>() {
-                    log::info!("📥 Summarization Input: {}", &input.text[..100]);
+                    log::info!("Summarization Input: {}", &input.text[..100]);
                 }
                 if let Some(output) = step_result.output.downcast_ref::<String>() {
-                    log::info!("📤 Summarization Output: {}", output);
+                    log::info!("Summarization Output: {}", output);
                 }
             }
             "formatting" => {
                 if let Some(input) = step_result.input.downcast_ref::<String>() {
-                    log::info!("📥 Formatting Input: {}", input);
+                    log::info!("Formatting Input: {}", input);
                 }
                 if let Some(output) = step_result.output.downcast_ref::<String>() {
-                    log::info!("📤 Formatting Output: {}", output);
+                    log::info!("Formatting Output: {}", output);
                 }
             }
             _ => {}
         };
     }
 
+    // Finalize the chain and get the output of the last step
     let final_output = chain.finalize()?;
     log::info!("Final Output: {:?}", final_output.parts);
 

@@ -8,6 +8,7 @@ pub mod conversation;
 pub mod definitions;
 pub mod function;
 pub mod inference;
+pub mod impls;
 pub use builder::*;
 pub use conversation::*;
 pub use definitions::*;

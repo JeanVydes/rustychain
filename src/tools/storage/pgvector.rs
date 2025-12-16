@@ -3,9 +3,10 @@
 //! This module provides tools for integrating PostgreSQL with pgvector
 //! as a vector store.
 
+use crate::llm::LLM;
 use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
-use crate::llm::{LLM, LLMActions};
 use crate::persistent::pgvector::{DocumentInput, SearchOptions};
+use crate::prelude::*;
 use crate::storage::persistent::pgvector::VectorStore;
 use crate::{FunctionDeclaration, RecursiveCharacterTextSplitter, TextSplitter};
 use schemars::{JsonSchema, schema_for};

@@ -51,8 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .build()?;
 
     let response = llm
-        .inference()
-        .with_message(Message::user("What is the sum of 42 and 58?"))
+        .inference(Message::user("What is the sum of 42 and 58?"))
         .generate()
         .await?;
 

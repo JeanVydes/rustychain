@@ -100,7 +100,6 @@ pub struct FunctionCall {
     pub name: String,
     pub arguments: Value,
 }
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionResult {
     pub name: String,
@@ -196,6 +195,8 @@ pub trait AnyFunction: Send + Debug + Sync {
     fn gemini_tool_definition(&self) -> GeminiTool;
     #[cfg(feature = "openai")]
     fn openai_tool_definition(&self) -> openai_api_rs::v1::chat_completion::Tool;
+    #[cfg(feature = "ollama")]
+    fn ollama_tool_definition(&self) -> ollama_rs::generation::tools::ToolInfo;
 }
 
 impl<A, R> From<FunctionDeclaration<A, R>> for Arc<dyn AnyFunction>
@@ -238,6 +239,7 @@ where
         Ok(serde_json::to_value(result)?)
     }
 
+    #[cfg(feature = "google")]
     fn gemini_tool_definition(&self) -> GeminiTool {
         GeminiTool::Function {
             function_declarations: vec![
@@ -252,6 +254,7 @@ where
         }
     }
 
+    #[cfg(feature = "openai")]
     fn openai_tool_definition(&self) -> openai_api_rs::v1::chat_completion::Tool {
         let schema_val = serde_json::to_value(&self.parameters).unwrap_or(Value::Null);
         openai_api_rs::v1::chat_completion::Tool {
@@ -260,6 +263,18 @@ where
                 name: String::from(self.name),
                 description: Some(String::from(self.description)),
                 parameters: schema_to_openai_parameters(&schema_val),
+            },
+        }
+    }
+
+    #[cfg(feature = "ollama")]
+    fn ollama_tool_definition(&self) -> ollama_rs::generation::tools::ToolInfo {
+        ollama_rs::generation::tools::ToolInfo {
+            tool_type: ollama_rs::generation::tools::ToolType::Function,
+            function: ollama_rs::generation::tools::ToolFunctionInfo {
+                name: self.name.to_string(),
+                description: self.description.to_string(),
+                parameters: self.parameters.clone(),
             },
         }
     }

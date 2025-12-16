@@ -180,6 +180,18 @@ impl Message {
         Self::new(Role::Tool, Some(message.to_string()))
     }
 
+    pub fn function_results(results: Vec<FunctionResult>) -> Self {
+        Self {
+            role: Role::Tool,
+            message: None,
+            audio: None,
+            images: None,
+            thinking: None,
+            function_calls: vec![],
+            function_results: results,
+        }
+    }
+
     pub fn add_function_result(mut self, result: FunctionResult) -> Self {
         self.function_results.push(result);
         self

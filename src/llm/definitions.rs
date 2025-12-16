@@ -1,34 +1,25 @@
-use std::{error::Error, sync::Arc};
-
 use futures_core::stream::Stream;
-use futures_util::{StreamExt, TryStreamExt};
 use gemini_rust::{
-    FunctionCallingMode, Gemini, GeminiBuilder, GenerationConfig as GeminiGenerationConfig,
-    ThinkingConfig,
+    ContentBuilder, FunctionCallingMode, Gemini, GeminiBuilder,
+    GenerationConfig as GeminiGenerationConfig, ThinkingConfig,
 };
-use ollama_rs::{
-    Ollama,
-    generation::chat::{ChatMessage, request::ChatMessageRequest},
-};
+use ollama_rs::generation::chat::{ChatMessage, request::ChatMessageRequest};
+#[cfg(feature = "openai")]
+use openai_api_rs::v1::chat_completion::chat_completion::ChatCompletionRequest;
 use openai_api_rs::v1::{
     api::{OpenAIClient, OpenAIClientBuilder},
-    chat_completion::{
-        ChatCompletionMessage, chat_completion::ChatCompletionRequest,
-        chat_completion_stream::ChatCompletionStreamRequest,
-    },
+    chat_completion::{ChatCompletionMessage, chat_completion_stream::ChatCompletionStreamRequest},
 };
+use schemars::Schema;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::pin::Pin;
+use std::{error::Error, sync::Arc};
 use url::Url;
 
 use crate::{
     CoreError,
     llm::{
-        builder::LLMBuilder,
-        conversation::{Message, Role},
-        function::AnyFunction,
-        inference::Inference,
+        builder::LLMBuilder, conversation::Message, function::AnyFunction, inference::Inference,
     },
 };
 
@@ -51,7 +42,139 @@ pub enum LLMProvider {
 pub enum ThinkingMode {
     None,
     Dynamic,
+    Effort(ThinkingEffort),
     Sized(i32),
+}
+
+impl ThinkingMode {
+    #[cfg(feature = "google")]
+    pub fn to_google(&self) -> i32 {
+        match self {
+            ThinkingMode::None => 0,
+            ThinkingMode::Sized(size) => size.clone(),
+            // Google doesnt support effort levels directly, set them dynamically
+            _ => -1,
+        }
+    }
+
+    #[cfg(feature = "openai")]
+    pub fn to_openai(&self) -> Option<openai_api_rs::v1::chat_completion::Reasoning> {
+        match self {
+            ThinkingMode::None => Some(openai_api_rs::v1::chat_completion::Reasoning {
+                mode: None,
+                exclude: None,
+                enabled: Some(false),
+            }),
+            ThinkingMode::Dynamic => None,
+            ThinkingMode::Effort(effort) => {
+                let reasoning_effort = match effort {
+                    ThinkingEffort::Low => openai_api_rs::v1::chat_completion::ReasoningEffort::Low,
+                    ThinkingEffort::Medium => {
+                        openai_api_rs::v1::chat_completion::ReasoningEffort::Medium
+                    }
+                    ThinkingEffort::High => {
+                        openai_api_rs::v1::chat_completion::ReasoningEffort::High
+                    }
+                };
+
+                Some(openai_api_rs::v1::chat_completion::Reasoning {
+                    mode: Some(openai_api_rs::v1::chat_completion::ReasoningMode::Effort {
+                        effort: reasoning_effort,
+                    }),
+                    exclude: Some(false),
+                    enabled: Some(true),
+                })
+            }
+            ThinkingMode::Sized(size) => Some(openai_api_rs::v1::chat_completion::Reasoning {
+                mode: Some(
+                    openai_api_rs::v1::chat_completion::ReasoningMode::MaxTokens {
+                        max_tokens: size.clone() as i64,
+                    },
+                ),
+                exclude: Some(false),
+                enabled: Some(true),
+            }),
+        }
+    }
+
+    #[cfg(feature = "ollama")]
+    pub fn to_ollama(&self) -> bool {
+        match self {
+            ThinkingMode::None => false,
+            _ => true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash, PartialOrd, Ord)]
+pub enum ThinkingEffort {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Clone, Debug)]
+pub enum ToolCallingMode {
+    None,
+    Auto,
+    Any,
+    Forced(Arc<dyn AnyFunction>),
+}
+
+impl Serialize for ToolCallingMode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let s = match self {
+            ToolCallingMode::None => "none",
+            ToolCallingMode::Auto => "auto",
+            ToolCallingMode::Any => "any",
+            ToolCallingMode::Forced(tool) => tool.name(),
+        };
+        serializer.serialize_str(s)
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolCallingMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "none" => Ok(ToolCallingMode::None),
+            "auto" => Ok(ToolCallingMode::Auto),
+            "any" => Ok(ToolCallingMode::Any),
+            _ => Err(serde::de::Error::custom(format!(
+                "Unknown tool calling mode: {}",
+                s
+            ))),
+        }
+    }
+}
+
+impl PartialEq<str> for ToolCallingMode {
+    fn eq(&self, other: &str) -> bool {
+        match self {
+            ToolCallingMode::None => other == "none",
+            ToolCallingMode::Auto => other == "auto",
+            ToolCallingMode::Any => other == "any",
+            ToolCallingMode::Forced(tool) => tool.name() == other,
+        }
+    }
+}
+
+impl PartialOrd<str> for ToolCallingMode {
+    fn partial_cmp(&self, other: &str) -> Option<std::cmp::Ordering> {
+        let self_str = match self {
+            ToolCallingMode::None => "none",
+            ToolCallingMode::Auto => "auto",
+            ToolCallingMode::Any => "any",
+            ToolCallingMode::Forced(tool) => tool.name(),
+        };
+        self_str.partial_cmp(other)
+    }
 }
 
 /// Struct representing a Large Language Model (LLM) with its configuration and capabilities.
@@ -87,8 +210,91 @@ pub struct GenerationConfig {
     pub thinking: ThinkingMode,
     pub candidate_count: i32,
     pub stop_sequences: Option<Vec<String>>,
-    pub output_schema: Option<Value>,
+    pub output_schema: Option<Schema>,
     pub response_mime_type: Option<String>,
+    pub tool_calling_mode: ToolCallingMode,
+}
+
+impl GenerationConfig {
+    /// Creates a new `GenerationConfig` with default settings.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_temperature(mut self, temperature: f32) -> Self {
+        self.temperature = temperature;
+        self
+    }
+
+    pub fn with_top_p(mut self, top_p: f32) -> Self {
+        self.top_p = top_p;
+        self
+    }
+
+    pub fn with_top_k(mut self, top_k: i32) -> Self {
+        self.top_k = top_k;
+        self
+    }
+
+    pub fn with_max_output_tokens(mut self, max_output_tokens: i32) -> Self {
+        self.max_output_tokens = max_output_tokens;
+        self
+    }
+
+    pub fn with_thinking(mut self, thinking: ThinkingMode) -> Self {
+        self.thinking = thinking;
+        self
+    }
+
+    pub fn with_candidate_count(mut self, candidate_count: i32) -> Self {
+        self.candidate_count = candidate_count;
+        self
+    }
+
+    pub fn with_stop_sequences(mut self, stop_sequences: Vec<String>) -> Self {
+        self.stop_sequences = Some(stop_sequences);
+        self
+    }
+
+    pub fn with_output_schema(mut self, output_schema: Schema) -> Self {
+        self.output_schema = Some(output_schema);
+        self
+    }
+
+    pub fn with_response_mime_type(mut self, mime_type: String) -> Self {
+        self.response_mime_type = Some(mime_type);
+        self
+    }
+
+    pub fn with_tool_calling_mode(mut self, mode: ToolCallingMode) -> Self {
+        self.tool_calling_mode = mode;
+        self
+    }
+
+    #[cfg(feature = "google")]
+    pub fn to_google_tool_calling_mode(&self) -> FunctionCallingMode {
+        match self.tool_calling_mode {
+            ToolCallingMode::None => FunctionCallingMode::None,
+            ToolCallingMode::Auto => FunctionCallingMode::Auto,
+            _ => FunctionCallingMode::Any,
+        }
+    }
+
+    #[cfg(feature = "openai")]
+    pub fn to_openai_tool_calling_mode(
+        &self,
+    ) -> openai_api_rs::v1::chat_completion::ToolChoiceType {
+        match &self.tool_calling_mode {
+            ToolCallingMode::None => openai_api_rs::v1::chat_completion::ToolChoiceType::None,
+            ToolCallingMode::Auto => openai_api_rs::v1::chat_completion::ToolChoiceType::Auto,
+            ToolCallingMode::Any => openai_api_rs::v1::chat_completion::ToolChoiceType::Required,
+            ToolCallingMode::Forced(tool) => {
+                openai_api_rs::v1::chat_completion::ToolChoiceType::ToolChoice {
+                    tool: tool.openai_tool_definition(),
+                }
+            }
+        }
+    }
 }
 
 impl Default for GenerationConfig {
@@ -103,65 +309,45 @@ impl Default for GenerationConfig {
             stop_sequences: None,
             output_schema: None,
             response_mime_type: None,
+            tool_calling_mode: ToolCallingMode::None,
         }
     }
 }
 
-/// Trait defining the actions that can be performed by an LLM.
-pub trait LLMActions {
-    /// Creates a new inference with this model.
-    /// This serve as a gateway to perform various LLM operations.
-    fn inference(&self) -> Inference;
-
+#[async_trait::async_trait]
+pub trait LLMGeneration {
     /// Performs text generation based on the provided history and message.
-    fn generation(
+    async fn generation(
         &self,
         history: &mut Vec<Message>,
         message: Message,
         config: GenerationConfig,
-    ) -> impl Future<Output = crate::Result<Message>> + Send;
+    ) -> crate::Result<Message>;
+}
 
+#[async_trait::async_trait]
+pub trait LLMStreaming {
     /// Streams text generation results based on the provided history and message.
-    fn stream(
+    async fn stream(
         &self,
         history: &mut Vec<Message>,
         message: Message,
         config: GenerationConfig,
-    ) -> impl Future<
-        Output = crate::Result<
-            Pin<Box<dyn Stream<Item = crate::Result<Message>> + Send + 'static>>,
-        >,
-    > + Send;
+    ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<Message>> + Send + 'static>>>;
+}
 
-    /// Streams text generation results with audio input.
-    fn stream_with_audio_input(
-        &self,
-        history: &mut Vec<Message>,
-        audio: Vec<u8>,
-        config: GenerationConfig,
-    ) -> impl Future<
-        Output = crate::Result<
-            Pin<Box<dyn Stream<Item = crate::Result<Message>> + Send + 'static>>,
-        >,
-    > + Send;
-
-    /// Performs text generation with audio input.
-    fn generation_with_audio_input(
-        &self,
-        history: &mut Vec<Message>,
-        audio: Vec<u8>,
-        config: GenerationConfig,
-    ) -> impl Future<Output = crate::Result<Message>> + Send;
-
+#[async_trait::async_trait]
+pub trait LLMEmbedding {
     /// Generates an embedding for the given text.
-    fn embedding(
-        &self,
-        text: &str,
-        dim: i32,
-    ) -> impl Future<Output = crate::Result<Vec<f32>>> + Send;
+    async fn embedding(&self, text: &str, dim: i32) -> crate::Result<Vec<f32>>;
 }
 
 impl LLM {
+    /// Creates a new inference with this model.
+    pub fn inference(&self, message: Message) -> Inference {
+        Inference::new(message, Arc::new(self.clone()))
+    }
+
     /// Creates a Gemini client configured for this LLM.
     #[cfg(feature = "google")]
     pub fn get_gemini_client(&self) -> crate::Result<Gemini> {
@@ -227,6 +413,24 @@ impl LLM {
         }
     }
 
+    pub fn exists_tool(&self, tool_name: &str) -> bool {
+        for tool in &self.tools {
+            if tool.name() == tool_name {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn get_tool(&self, tool_name: &str) -> Option<Arc<dyn AnyFunction>> {
+        for tool in &self.tools {
+            if tool.name() == tool_name {
+                return Some(tool.clone());
+            }
+        }
+        None
+    }
+
     /// Creates a new LLM builder.
     pub fn builder() -> LLMBuilder {
         LLMBuilder {
@@ -238,488 +442,192 @@ impl LLM {
             endpoint: None,
         }
     }
-}
 
-impl LLMActions for LLM {
-    /// Creates a new inference with this model.
-    fn inference(&self) -> Inference {
-        Inference::new().with_llm(Arc::new(self.clone()))
-    }
-
-    /// Performs text generation based on the provided history and message.
-    #[allow(unreachable_patterns)]
-    async fn generation(
+    #[cfg(feature = "google")]
+    pub fn new_google_request(
         &self,
         history: &mut Vec<Message>,
         message: Message,
         config: GenerationConfig,
-    ) -> crate::Result<Message> {
-        match self.provider {
-            #[cfg(feature = "google")]
-            LLMProvider::Google => {
-                let client = self.get_gemini_client()?;
+    ) -> crate::Result<ContentBuilder> {
+        let client = self.get_gemini_client()?;
 
-                history.push(message);
-                let history: Vec<gemini_rust::Message> =
-                    history.iter().map(|m| m.to_gemini()).collect();
+        history.push(message);
+        let history: Vec<gemini_rust::Message> = history.iter().map(|m| m.to_gemini()).collect();
 
-                let thinking_budget: i32 = match config.thinking {
-                    ThinkingMode::None => 0,
-                    ThinkingMode::Dynamic => -1,
-                    ThinkingMode::Sized(size) => size,
-                };
+        let mut req = client
+            .generate_content()
+            .with_system_instruction(self.system_prompt.clone())
+            .with_messages(history)
+            .with_thinking_budget(config.thinking.to_google())
+            .with_generation_config(GeminiGenerationConfig {
+                temperature: Some(config.temperature),
+                top_p: Some(config.top_p),
+                top_k: Some(config.top_k),
+                max_output_tokens: Some(config.max_output_tokens),
+                thinking_config: Some(ThinkingConfig {
+                    thinking_budget: Some(config.thinking.to_google()),
+                    ..Default::default()
+                }),
+                candidate_count: Some(config.candidate_count),
+                ..Default::default()
+            })
+            .with_function_calling_mode(config.to_google_tool_calling_mode());
 
-                let function_calling_mode = match self.tools.is_empty() {
-                    true => FunctionCallingMode::None,
-                    false => FunctionCallingMode::Auto,
-                };
-
-                let mut req = client
-                    .generate_content()
-                    .with_system_instruction(self.system_prompt.clone())
-                    .with_messages(history)
-                    .with_thinking_budget(thinking_budget)
-                    .with_generation_config(GeminiGenerationConfig {
-                        temperature: Some(config.temperature),
-                        top_p: Some(config.top_p),
-                        top_k: Some(config.top_k),
-                        max_output_tokens: Some(config.max_output_tokens),
-                        thinking_config: Some(ThinkingConfig {
-                            thinking_budget: Some(thinking_budget),
-                            ..Default::default()
-                        }),
-                        candidate_count: Some(config.candidate_count),
-                        stop_sequences: config.stop_sequences.clone(),
-                        response_mime_type: config.response_mime_type.clone(),
-                        response_schema: config.output_schema.clone(),
-                        ..Default::default()
-                    })
-                    .with_function_calling_mode(function_calling_mode);
-
-                if config.output_schema.is_some() {
-                    req = req
-                        .with_response_mime_type("application/json".to_owned())
-                        .with_response_schema(config.output_schema.clone().unwrap());
-                }
-
-                for tool in &self.tools {
-                    req = req.with_tool(tool.gemini_tool_definition());
-                }
-
-                match req.execute().await {
-                    Ok(res) => Ok(Message::from_gemini(res)),
-                    Err(err) => Err(Box::from(CoreError::Gemini(err))),
-                }
-            }
-            #[cfg(feature = "openai")]
-            LLMProvider::OpenAI => {
-                let mut client = self.get_openai_client()?;
-
-                // Build messages with system prompt first
-                let mut messages: Vec<ChatCompletionMessage> = vec![];
-                if !self.system_prompt.is_empty() {
-                    messages.push(ChatCompletionMessage {
-                        role: openai_api_rs::v1::chat_completion::MessageRole::system,
-                        content: openai_api_rs::v1::chat_completion::Content::Text(
-                            self.system_prompt.clone(),
-                        ),
-                        name: None,
-                        tool_calls: None,
-                        tool_call_id: None,
-                    });
-                }
-                messages.extend(history.iter().map(|m| m.to_openai()));
-                messages.push(message.to_openai());
-
-                let req = ChatCompletionRequest::new(self.name.clone(), messages)
-                    .max_tokens(config.max_output_tokens as i64)
-                    .temperature(config.temperature as f64)
-                    .top_p(config.top_p as f64)
-                    .n(config.candidate_count as i64)
-                    .tools(
-                        self.tools
-                            .iter()
-                            .map(|t| t.openai_tool_definition())
-                            .collect(),
-                    );
-
-                let res = client.chat_completion(req).await.map_err(
-                    |e| -> Box<dyn Error + Send + Sync> {
-                        Box::from(CoreError::OpenAI(format!("OpenAI request failed: {:?}", e)))
-                    },
-                )?;
-
-                if let Some(choice) = res.choices.first() {
-                    Ok(Message::from_openai_chat_completion_message_for_response(
-                        &choice.message,
-                    )?)
-                } else {
-                    Err(Box::from(CoreError::Generic(
-                        "No choices returned from OpenAI".to_owned(),
-                    )))
-                }
-            }
-            #[cfg(feature = "ollama")]
-            LLMProvider::Ollama => {
-                let mut history: Vec<ChatMessage> = history.iter().map(|m| m.to_ollama()).collect();
-
-                match Ollama::default()
-                    .send_chat_messages_with_history(
-                        &mut history,
-                        ChatMessageRequest::new("model".to_owned(), vec![message.to_ollama()]),
-                    )
-                    .await
-                {
-                    Ok(res) => Ok(Message::from_ollama(res)),
-                    Err(err) => Err(Box::from(CoreError::Ollama(err))),
-                }
-            }
-            #[cfg(feature = "anthropic")]
-            LLMProvider::Anthropic => Err(Box::from(CoreError::Generic(
-                "Anthropic provider not yet implemented".to_owned(),
-            ))),
-            _ => Err(Box::from(CoreError::Unsupported(
-                "Provider not supported for generation".to_owned(),
-            ))),
+        if let Some(schema) = config.output_schema {
+            req = req
+                .with_response_mime_type("application/json".to_owned())
+                .with_response_schema(schema.to_value());
         }
+
+        if let Some(stop_sequences) = &config.stop_sequences {
+            req = req.with_stop_sequences(stop_sequences.clone());
+        }
+
+        for tool in &self.tools {
+            req = req.with_tool(tool.gemini_tool_definition());
+        }
+
+        Ok(req)
     }
 
-    /// Streams text generation results based on the provided history and message.
-    #[allow(unreachable_patterns)]
-    async fn stream(
+    #[cfg(feature = "openai")]
+    pub fn new_openai_request(
         &self,
         history: &mut Vec<Message>,
         message: Message,
         config: GenerationConfig,
-    ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<Message>> + Send + 'static>>> {
-        match self.provider {
-            #[cfg(feature = "google")]
-            LLMProvider::Google => {
-                let client = self.get_gemini_client()?;
-
-                history.push(message);
-                let history: Vec<gemini_rust::Message> =
-                    history.iter().map(|m| m.to_gemini()).collect();
-
-                let thinking_budget: i32 = match config.thinking {
-                    ThinkingMode::None => 0,
-                    ThinkingMode::Dynamic => -1,
-                    ThinkingMode::Sized(size) => size,
-                };
-
-                let function_calling_mode = match self.tools.is_empty() {
-                    true => FunctionCallingMode::None,
-                    false => FunctionCallingMode::Auto,
-                };
-
-                let mut req = client
-                    .generate_content()
-                    .with_system_instruction(self.system_prompt.clone())
-                    .with_messages(history)
-                    .with_thinking_budget(thinking_budget)
-                    .with_generation_config(GeminiGenerationConfig {
-                        temperature: Some(config.temperature),
-                        top_p: Some(config.top_p),
-                        top_k: Some(config.top_k),
-                        max_output_tokens: Some(config.max_output_tokens),
-                        thinking_config: Some(ThinkingConfig {
-                            thinking_budget: Some(thinking_budget),
-                            ..Default::default()
-                        }),
-                        candidate_count: Some(config.candidate_count),
-                        stop_sequences: config.stop_sequences.clone(),
-                        response_mime_type: config.response_mime_type.clone(),
-                        response_schema: config.output_schema.clone(),
-                        ..Default::default()
-                    })
-                    .with_function_calling_mode(function_calling_mode);
-
-                for tool in &self.tools {
-                    req = req.with_tool(tool.gemini_tool_definition());
-                }
-
-                let stream = req.execute_stream().await?;
-
-                let mapped = stream.into_stream().map(|res| match res {
-                    Ok(gen_resp) => Ok(Message::from_gemini(gen_resp)),
-                    Err(e) => Err(Box::new(CoreError::Gemini(e)) as Box<dyn Error + Send + Sync>),
-                });
-
-                Ok(Box::pin(mapped))
-            }
-            #[cfg(feature = "openai")]
-            LLMProvider::OpenAI => {
-                let mut client = self.get_openai_client()?;
-
-                // Build messages with system prompt first
-                let mut messages: Vec<ChatCompletionMessage> = vec![];
-                if !self.system_prompt.is_empty() {
-                    messages.push(ChatCompletionMessage {
-                        role: openai_api_rs::v1::chat_completion::MessageRole::system,
-                        content: openai_api_rs::v1::chat_completion::Content::Text(
-                            self.system_prompt.clone(),
-                        ),
-                        name: None,
-                        tool_calls: None,
-                        tool_call_id: None,
-                    });
-                }
-                messages.extend(history.iter().map(|m| m.to_openai()));
-                messages.push(message.to_openai());
-
-                let req = ChatCompletionStreamRequest::new(self.name.clone(), messages)
-                    .max_tokens(config.max_output_tokens as i64)
-                    .temperature(config.temperature as f64)
-                    .top_p(config.top_p as f64)
-                    .n(config.candidate_count as i64)
-                    .tools(
-                        self.tools
-                            .iter()
-                            .map(|t| t.openai_tool_definition())
-                            .collect(),
-                    );
-
-                let stream = client.chat_completion_stream(req).await.map_err(
-                    |_| -> Box<dyn Error + Send + Sync> {
-                        Box::from(CoreError::OpenAI("OpenAI stream request failed".to_owned()))
-                    },
-                )?;
-                let mapped = stream.map(Message::from_openai_chat_completion_stream_response);
-                Ok(Box::pin(mapped))
-            }
-            #[cfg(feature = "ollama")]
-            LLMProvider::Ollama => {
-                let _history: Vec<ChatMessage> = history.iter().map(|m| m.to_ollama()).collect();
-
-                match Ollama::default()
-                    .send_chat_messages_stream(
-                        //&mut history,
-                        ChatMessageRequest::new("model".to_owned(), vec![message.to_ollama()]),
-                    )
-                    .await
-                {
-                    Ok(res) => {
-                        let mapped = res.map(|res| match res {
-                            Ok(ollama_msg) => Ok(Message::from_ollama(ollama_msg)),
-                            Err(_e) => Err(Box::new(CoreError::Generic(
-                                "Ollama stream error".to_owned(),
-                            ))
-                                as Box<dyn Error + Send + Sync>),
-                        });
-
-                        Ok(Box::pin(mapped))
-                    }
-                    Err(err) => Err(Box::from(CoreError::Ollama(err))),
-                }
-            }
-            #[cfg(feature = "anthropic")]
-            LLMProvider::Anthropic => Err(Box::from(CoreError::Generic(
-                "Streaming not yet implemented for this provider".to_owned(),
-            ))),
-            _ => Err(Box::from(CoreError::Unsupported(
-                "Provider not supported for streaming".to_owned(),
-            ))),
+    ) -> crate::Result<ChatCompletionRequest> {
+        // Build messages with system prompt first
+        let mut messages: Vec<ChatCompletionMessage> = vec![];
+        if !self.system_prompt.is_empty() {
+            messages.push(ChatCompletionMessage {
+                role: openai_api_rs::v1::chat_completion::MessageRole::system,
+                content: openai_api_rs::v1::chat_completion::Content::Text(
+                    self.system_prompt.clone(),
+                ),
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
+            });
         }
+        messages.extend(history.iter().map(|m| m.to_openai()));
+        messages.push(message.to_openai());
+
+        let mut req = ChatCompletionRequest::new(self.name.clone(), messages)
+            .max_tokens(config.max_output_tokens as i64)
+            .temperature(config.temperature as f64)
+            .top_p(config.top_p as f64)
+            .n(config.candidate_count as i64)
+            .tools(
+                self.tools
+                    .iter()
+                    .map(|t| t.openai_tool_definition())
+                    .collect(),
+            )
+            .tool_choice(config.to_openai_tool_calling_mode());
+
+        if let Some(reasoning) = config.thinking.to_openai() {
+            req = req.reasoning(reasoning);
+        }
+
+        if let Some(stop_sequences) = &config.stop_sequences {
+            req = req.stop(stop_sequences.clone());
+        }
+
+        if let Some(output_schema) = config.output_schema {
+            req = req.response_format(output_schema.to_value());
+        }
+
+        Ok(req)
     }
 
-    /// Streams text generation results with audio input.
-    async fn stream_with_audio_input(
+    #[cfg(feature = "openai")]
+    pub fn new_openai_stream_request(
         &self,
         history: &mut Vec<Message>,
-        audio: Vec<u8>,
+        message: Message,
         config: GenerationConfig,
-    ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<Message>> + Send + 'static>>> {
-        match self.provider {
-            #[cfg(feature = "google")]
-            LLMProvider::Google => {
-                let client = self.get_gemini_client()?;
-
-                history.push(Message {
-                    role: Role::User,
-                    message: None,
-                    audio: Some(audio),
-                    images: None,
-                    thinking: None,
-                    function_calls: vec![],
-                    function_results: vec![],
-                });
-
-                let history: Vec<gemini_rust::Message> =
-                    history.iter().map(|m| m.to_gemini()).collect();
-
-                let thinking_budget: i32 = match config.thinking {
-                    ThinkingMode::None => 0,
-                    ThinkingMode::Dynamic => -1,
-                    ThinkingMode::Sized(size) => size,
-                };
-
-                let function_calling_mode = match self.tools.is_empty() {
-                    true => FunctionCallingMode::None,
-                    false => FunctionCallingMode::Auto,
-                };
-
-                let mut req = client
-                    .generate_content()
-                    .with_system_instruction(self.system_prompt.clone())
-                    .with_messages(history)
-                    .with_thinking_budget(thinking_budget)
-                    .with_generation_config(GeminiGenerationConfig {
-                        temperature: Some(config.temperature),
-                        top_p: Some(config.top_p),
-                        top_k: Some(config.top_k),
-                        max_output_tokens: Some(config.max_output_tokens),
-                        thinking_config: Some(ThinkingConfig {
-                            thinking_budget: Some(thinking_budget),
-                            ..Default::default()
-                        }),
-                        candidate_count: Some(config.candidate_count),
-                        stop_sequences: config.stop_sequences.clone(),
-                        response_mime_type: config.response_mime_type.clone(),
-                        response_schema: config.output_schema.clone(),
-                        ..Default::default()
-                    })
-                    .with_function_calling_mode(function_calling_mode);
-
-                for tool in &self.tools {
-                    req = req.with_tool(tool.gemini_tool_definition());
-                }
-
-                let stream = req.execute_stream().await?;
-
-                let mapped = stream.into_stream().map(|res| match res {
-                    Ok(gen_resp) => Ok(Message::from_gemini(gen_resp)),
-                    Err(e) => Err(Box::new(CoreError::Gemini(e)) as Box<dyn Error + Send + Sync>),
-                });
-
-                Ok(Box::pin(mapped))
-            }
-            _ => Err(Box::from(CoreError::Unsupported(
-                "Streaming with audio input not supported for this provider".to_owned(),
-            ))),
+    ) -> crate::Result<ChatCompletionStreamRequest> {
+        // Build messages with system prompt first
+        let mut messages: Vec<ChatCompletionMessage> = vec![];
+        if !self.system_prompt.is_empty() {
+            messages.push(ChatCompletionMessage {
+                role: openai_api_rs::v1::chat_completion::MessageRole::system,
+                content: openai_api_rs::v1::chat_completion::Content::Text(
+                    self.system_prompt.clone(),
+                ),
+                name: None,
+                tool_calls: None,
+                tool_call_id: None,
+            });
         }
+        messages.extend(history.iter().map(|m| m.to_openai()));
+        messages.push(message.to_openai());
+
+        let mut req = ChatCompletionStreamRequest::new(self.name.clone(), messages)
+            .max_tokens(config.max_output_tokens as i64)
+            .temperature(config.temperature as f64)
+            .top_p(config.top_p as f64)
+            .n(config.candidate_count as i64)
+            .tools(
+                self.tools
+                    .iter()
+                    .map(|t| t.openai_tool_definition())
+                    .collect(),
+            )
+            .tool_choice(config.to_openai_tool_calling_mode());
+
+        if let Some(reasoning) = config.thinking.to_openai() {
+            req = req.reasoning(reasoning);
+        }
+
+        if let Some(stop_sequences) = &config.stop_sequences {
+            req = req.stop(stop_sequences.clone());
+        }
+
+        if let Some(output_schema) = config.output_schema {
+            req = req.response_format(output_schema.to_value());
+        }
+
+        Ok(req)
     }
 
-    /// Performs text generation with audio input.
-    async fn generation_with_audio_input(
+    #[cfg(feature = "ollama")]
+    pub fn new_ollama_request(
         &self,
         history: &mut Vec<Message>,
-        audio: Vec<u8>,
+        message: Message,
         config: GenerationConfig,
-    ) -> crate::Result<Message> {
-        match self.provider {
-            #[cfg(feature = "google")]
-            LLMProvider::Google => {
-                let client = self.get_gemini_client()?;
+    ) -> crate::Result<ChatMessageRequest> {
+        use ollama_rs::{generation::parameters::JsonStructure, models::ModelOptions};
 
-                history.push(Message {
-                    role: Role::User,
-                    message: None,
-                    audio: Some(audio),
-                    images: None,
-                    thinking: None,
-                    function_calls: vec![],
-                    function_results: vec![],
-                });
+        let mut ollama_messages: Vec<ChatMessage> = history.iter().map(|m| m.to_ollama()).collect();
+        ollama_messages.push(message.to_ollama());
+        let mut req = ChatMessageRequest::new(self.name.clone(), ollama_messages)
+            .think(config.thinking.to_ollama())
+            .tools(
+                self.tools
+                    .iter()
+                    .map(|t| t.ollama_tool_definition())
+                    .collect(),
+            )
+            .options(
+                ModelOptions::default()
+                    .top_k(config.top_k as u32)
+                    .top_p(config.top_p as f32)
+                    .temperature(config.temperature as f32)
+                    .stop(config.stop_sequences.clone().unwrap_or_default()),
+            );
 
-                let history: Vec<gemini_rust::Message> =
-                    history.iter().map(|m| m.to_gemini()).collect();
-
-                let thinking_budget: i32 = match config.thinking {
-                    ThinkingMode::None => 0,
-                    ThinkingMode::Dynamic => -1,
-                    ThinkingMode::Sized(size) => size,
-                };
-
-                let function_calling_mode = match self.tools.is_empty() {
-                    true => FunctionCallingMode::None,
-                    false => FunctionCallingMode::Auto,
-                };
-
-                let mut req = client
-                    .generate_content()
-                    .with_system_instruction(self.system_prompt.clone())
-                    .with_messages(history)
-                    .with_thinking_budget(thinking_budget)
-                    .with_generation_config(GeminiGenerationConfig {
-                        temperature: Some(config.temperature),
-                        top_p: Some(config.top_p),
-                        top_k: Some(config.top_k),
-                        max_output_tokens: Some(config.max_output_tokens),
-                        thinking_config: Some(ThinkingConfig {
-                            thinking_budget: Some(thinking_budget),
-                            ..Default::default()
-                        }),
-                        candidate_count: Some(config.candidate_count),
-                        stop_sequences: config.stop_sequences.clone(),
-                        response_mime_type: config.response_mime_type.clone(),
-                        response_schema: config.output_schema.clone(),
-                        ..Default::default()
-                    })
-                    .with_function_calling_mode(function_calling_mode);
-
-                for tool in &self.tools {
-                    req = req.with_tool(tool.gemini_tool_definition());
-                }
-
-                match req.execute().await {
-                    Ok(res) => Ok(Message::from_gemini(res)),
-                    Err(err) => Err(Box::from(CoreError::Gemini(err))),
-                }
-            }
-            _ => Err(Box::from(CoreError::Unsupported(
-                "Generation with audio input not supported for this provider".to_owned(),
-            ))),
+        if let Some(schema) = &config.output_schema {
+            req = req.format(
+                ollama_rs::generation::parameters::FormatType::StructuredJson(Box::from(
+                    JsonStructure::new_for_schema(schema.clone()),
+                )),
+            );
         }
-    }
 
-    /// Generates an embedding for the given text.
-    async fn embedding(&self, text: &str, dim: i32) -> crate::Result<Vec<f32>> {
-        match self.provider {
-            #[cfg(feature = "google")]
-            LLMProvider::Google => {
-                let client = self.get_gemini_client()?;
-
-                let res = client
-                    .embed_content()
-                    .with_output_dimensionality(dim)
-                    .with_text(text)
-                    .execute()
-                    .await?;
-
-                Ok(res.embedding.values)
-            }
-            #[cfg(feature = "openai")]
-            LLMProvider::OpenAI => {
-                let mut client = self.get_openai_client()?;
-
-                let mut req = openai_api_rs::v1::embedding::EmbeddingRequest::new(
-                    self.name.clone(),
-                    vec![text.to_owned()],
-                );
-                req.dimensions = Some(dim);
-
-                let res =
-                    client
-                        .embedding(req)
-                        .await
-                        .map_err(|e| -> Box<dyn Error + Send + Sync> {
-                            Box::from(CoreError::OpenAI(format!(
-                                "OpenAI embedding request failed: {:?}",
-                                e
-                            )))
-                        })?;
-
-                if let Some(data) = res.data.first() {
-                    Ok(data.embedding.clone())
-                } else {
-                    Err(Box::from(CoreError::Generic(
-                        "No embedding data returned from OpenAI".to_owned(),
-                    )))
-                }
-            }
-            _ => Err(Box::from(CoreError::Unsupported(
-                "Embedding not supported for this provider".to_owned(),
-            ))),
-        }
+        Ok(req)
     }
 }

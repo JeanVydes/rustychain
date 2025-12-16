@@ -2,9 +2,9 @@
 //!
 //! Tests that Inference correctly builds requests for generate/stream
 
-use rustychain::llm::inference::Inference;
+use rustychain::ToolCallingMode;
 use rustychain::llm::{
-    FunctionCall, FunctionResult, GenerationConfig, Message, Role, ThinkingMode,
+    FunctionCall, FunctionResult, GenerationConfig, LLM, LLMProvider, Message, Role, ThinkingMode,
 };
 
 // ============================================================================
@@ -59,25 +59,38 @@ fn tool_message(results: Vec<FunctionResult>) -> Message {
     }
 }
 
+fn dummy_llm() -> LLM {
+    LLM {
+        name: "test-model".to_string(),
+        system_prompt: "".to_string(),
+        provider: LLMProvider::OpenAI,
+        authorization: None,
+        endpoint: None,
+        tools: vec![],
+    }
+}
+
 // ============================================================================
 // Inference Builder Tests
 // ============================================================================
 
 #[test]
 fn test_inference_new_creates_empty() {
-    let inf = Inference::new();
+    let llm = dummy_llm();
+    let inf = llm.inference(user_message(""));
 
     assert!(inf.history.is_empty());
-    assert!(inf.message.is_none());
-    assert!(inf.audio.is_none());
+    assert_eq!(inf.message.role, Role::User);
+    assert!(inf.output_schema.is_none());
 }
 
 #[test]
 fn test_inference_with_message() {
-    let inf = Inference::new().with_message(user_message("Hello"));
+    let llm = dummy_llm();
+    let inf = llm.inference(user_message("Hello"));
 
-    assert!(inf.message.is_some());
-    assert_eq!(inf.message.as_ref().unwrap().role, Role::User);
+    assert_eq!(inf.message.role, Role::User);
+    assert_eq!(inf.message.message.as_ref().unwrap(), "Hello");
 }
 
 #[test]
@@ -88,7 +101,8 @@ fn test_inference_with_history() {
         assistant_message("Hello!"),
     ];
 
-    let inf = Inference::new().with_history(history);
+    let llm = dummy_llm();
+    let inf = llm.inference(user_message("")).with_history(history);
 
     assert_eq!(inf.history.len(), 3);
     assert_eq!(inf.history[0].role, Role::System);
@@ -108,9 +122,11 @@ fn test_inference_with_config() {
         stop_sequences: Some(vec!["STOP".to_string()]),
         output_schema: None,
         response_mime_type: None,
+        tool_calling_mode: ToolCallingMode::Auto,
     };
 
-    let inf = Inference::new().with_config(config.clone());
+    let llm = dummy_llm();
+    let inf = llm.inference(user_message("")).with_config(config.clone());
 
     assert_eq!(inf.config.temperature, 0.7);
     assert_eq!(inf.config.top_p, 0.9);
@@ -120,18 +136,23 @@ fn test_inference_with_config() {
 #[test]
 fn test_inference_with_audio() {
     let audio_data = vec![0u8; 1024];
+    let msg = user_message("with audio").with_audio(audio_data.clone());
+    let llm = dummy_llm();
 
-    let inf = Inference::new().with_audio(audio_data.clone());
+    let inf = llm.inference(msg);
 
-    assert!(inf.audio.is_some());
-    assert_eq!(inf.audio.unwrap().len(), 1024);
+    assert!(inf.message.audio.is_some());
+    assert_eq!(inf.message.audio.as_ref().unwrap().len(), 1024);
 }
 
 #[test]
 fn test_inference_chained_building() {
-    let inf = Inference::new()
+    let msg = user_message("Explain Rust").with_audio(vec![1, 2, 3]);
+    let llm = dummy_llm();
+
+    let inf = llm
+        .inference(msg)
         .with_history(vec![system_message("Be concise")])
-        .with_message(user_message("Explain Rust"))
         .with_config(GenerationConfig {
             temperature: 0.5,
             top_p: 0.9,
@@ -142,12 +163,12 @@ fn test_inference_chained_building() {
             stop_sequences: None,
             output_schema: None,
             response_mime_type: None,
-        })
-        .with_audio(vec![1, 2, 3]);
+            tool_calling_mode: ToolCallingMode::Auto,
+        });
 
     assert_eq!(inf.history.len(), 1);
-    assert!(inf.message.is_some());
-    assert!(inf.audio.is_some());
+    assert_eq!(inf.message.role, Role::User);
+    assert!(inf.message.audio.is_some());
 }
 
 // ============================================================================
@@ -177,6 +198,7 @@ fn test_generation_config_with_values() {
         stop_sequences: Some(vec!["END".to_string(), "STOP".to_string()]),
         output_schema: None,
         response_mime_type: None,
+        tool_calling_mode: ToolCallingMode::Auto,
     };
 
     assert_eq!(config.temperature, 0.8);
@@ -220,10 +242,10 @@ fn test_inference_with_function_result() {
     };
 
     let msg = tool_message(vec![result]);
-    let inf = Inference::new().with_message(msg);
+    let llm = dummy_llm();
+    let inf = llm.inference(msg);
 
-    assert!(inf.message.is_some());
-    assert_eq!(inf.message.as_ref().unwrap().role, Role::Tool);
+    assert_eq!(inf.message.role, Role::Tool);
 }
 
 // ============================================================================
@@ -232,15 +254,15 @@ fn test_inference_with_function_result() {
 
 #[test]
 fn test_inference_builder_is_consuming() {
-    let inf1 = Inference::new();
+    let llm = dummy_llm();
+    let inf1 = llm.inference(user_message("Initial"));
 
     // Each call consumes and returns new inference
     let inf2 = inf1.with_history(vec![user_message("Hello")]);
-    let inf3 = inf2.with_message(assistant_message("Hi"));
 
-    // inf3 should have history and message
-    assert_eq!(inf3.history.len(), 1);
-    assert!(inf3.message.is_some());
+    // inf2 should have history and keep the original message
+    assert_eq!(inf2.history.len(), 1);
+    assert_eq!(inf2.message.role, Role::User);
 }
 
 // ============================================================================
@@ -260,11 +282,14 @@ fn test_inference_with_llm_config_compatibility() {
         stop_sequences: Some(vec!["STOP".to_string()]),
         output_schema: None,
         response_mime_type: None,
+        tool_calling_mode: ToolCallingMode::Auto,
     };
 
+    let llm = dummy_llm();
+
     // Build inference
-    let inf = Inference::new()
-        .with_message(user_message("Test"))
+    let inf = llm
+        .inference(user_message("Test"))
         .with_config(config.clone());
 
     // Verify config is preserved
@@ -286,7 +311,8 @@ fn test_inference_preserves_history_order() {
         assistant_message("Model 2"),
     ];
 
-    let inf = Inference::new().with_history(history);
+    let llm = dummy_llm();
+    let inf = llm.inference(user_message("")).with_history(history);
 
     assert_eq!(inf.history[0].role, Role::System);
     assert_eq!(inf.history[1].role, Role::User);
@@ -329,12 +355,13 @@ fn test_inference_complex_conversation() {
         tool_message(vec![result]),
     ];
 
-    let inf = Inference::new()
-        .with_history(history)
-        .with_message(assistant_message("I found tokio and async-std"));
+    let llm = dummy_llm();
+    let inf = llm
+        .inference(assistant_message("I found tokio and async-std"))
+        .with_history(history);
 
     assert_eq!(inf.history.len(), 4);
-    assert!(inf.message.is_some());
+    assert_eq!(inf.message.role, Role::Assistant);
 
     // Verify roles in history
     assert_eq!(inf.history[0].role, Role::System);
@@ -360,21 +387,17 @@ fn test_inference_building_is_idempotent() {
         stop_sequences: None,
         output_schema: None,
         response_mime_type: None,
+        tool_calling_mode: ToolCallingMode::Auto,
     };
 
     // Build multiple times with same input
     let mut results = Vec::new();
+    let llm = dummy_llm();
 
     for _ in 0..100 {
-        let inf = Inference::new()
-            .with_message(msg.clone())
-            .with_config(config.clone());
+        let inf = llm.inference(msg.clone()).with_config(config.clone());
 
-        results.push((
-            inf.message.is_some(),
-            inf.message.as_ref().map(|m| m.role.clone()),
-            inf.config.temperature,
-        ));
+        results.push((inf.message.role.clone(), inf.config.temperature));
     }
 
     // All results should be identical
@@ -382,7 +405,6 @@ fn test_inference_building_is_idempotent() {
     for result in &results {
         assert_eq!(result.0, first.0);
         assert_eq!(result.1, first.1);
-        assert_eq!(result.2, first.2);
     }
 }
 
@@ -402,6 +424,7 @@ fn test_generation_config_clone() {
         stop_sequences: Some(vec!["STOP".to_string()]),
         output_schema: None,
         response_mime_type: None,
+        tool_calling_mode: ToolCallingMode::Auto,
     };
 
     let cloned = config.clone();
@@ -424,6 +447,7 @@ fn test_generation_config_debug() {
         stop_sequences: None,
         output_schema: None,
         response_mime_type: None,
+        tool_calling_mode: ToolCallingMode::Auto,
     };
 
     let debug = format!("{:?}", config);
