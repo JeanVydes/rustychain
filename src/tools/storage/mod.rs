@@ -6,3 +6,5 @@
 
 #[cfg(feature = "postgres")]
 pub mod pgvector;
+#[cfg(feature = "postgres")]
+pub use pgvector::*;

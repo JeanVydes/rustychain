@@ -467,6 +467,12 @@ pub struct FileInfoTool {
 // List Directory Tool
 // ============================================================================
 
+impl ListDirectoryTool {
+    pub fn new(config: Arc<FileSystemConfig>) -> Self {
+        Self { config }
+    }
+}
+
 #[async_trait::async_trait]
 impl FnExecutor<ListDirectoryArgs, ListDirectoryResult> for ListDirectoryTool {
     async fn call(&self, args: ListDirectoryArgs) -> crate::Result<ListDirectoryResult> {
@@ -570,6 +576,12 @@ impl FnDeclarator<ListDirectoryArgs, ListDirectoryResult> for ListDirectoryTool 
 // ============================================================================
 // Show Tree Tool
 // ============================================================================
+
+impl ShowTreeTool {
+    pub fn new(config: Arc<FileSystemConfig>) -> Self {
+        Self { config }
+    }
+}
 
 fn build_tree(
     path: &Path,
@@ -678,6 +690,12 @@ impl FnDeclarator<ShowTreeArgs, TreeResult> for ShowTreeTool {
 // Read File Tool (with line range support)
 // ============================================================================
 
+impl ReadFileTool {
+    pub fn new(config: Arc<FileSystemConfig>) -> Self {
+        Self { config }
+    }
+}
+
 #[async_trait::async_trait]
 impl FnExecutor<ReadFileArgs, ReadFileResult> for ReadFileTool {
     async fn call(&self, args: ReadFileArgs) -> crate::Result<ReadFileResult> {
@@ -781,6 +799,12 @@ impl FnDeclarator<ReadFileArgs, ReadFileResult> for ReadFileTool {
 // Write File Tool
 // ============================================================================
 
+impl WriteFileTool {
+    pub fn new(config: Arc<FileSystemConfig>) -> Self {
+        Self { config }
+    }
+}
+
 #[async_trait::async_trait]
 impl FnExecutor<WriteFileArgs, FileOperationResult> for WriteFileTool {
     async fn call(&self, args: WriteFileArgs) -> crate::Result<FileOperationResult> {
@@ -835,6 +859,12 @@ impl FnDeclarator<WriteFileArgs, FileOperationResult> for WriteFileTool {
 // ============================================================================
 // Create File Tool
 // ============================================================================
+
+impl CreateFileTool {
+    pub fn new(config: Arc<FileSystemConfig>) -> Self {
+        Self { config }
+    }
+}
 
 #[async_trait::async_trait]
 impl FnExecutor<CreateFileArgs, FileOperationResult> for CreateFileTool {
@@ -891,6 +921,12 @@ impl FnDeclarator<CreateFileArgs, FileOperationResult> for CreateFileTool {
 // ============================================================================
 // Concatenate Files Tool
 // ============================================================================
+
+impl ConcatenateFilesTool {
+    pub fn new(config: Arc<FileSystemConfig>) -> Self {
+        Self { config }
+    }
+}
 
 #[async_trait::async_trait]
 impl FnExecutor<ConcatenateFilesArgs, ConcatenateResult> for ConcatenateFilesTool {
@@ -958,6 +994,12 @@ impl FnDeclarator<ConcatenateFilesArgs, ConcatenateResult> for ConcatenateFilesT
 // ============================================================================
 // Edit File Tool (Advanced editor-like operations)
 // ============================================================================
+
+impl EditFileTool {
+    pub fn new(config: Arc<FileSystemConfig>) -> Self {
+        Self { config }
+    }
+}
 
 #[async_trait::async_trait]
 impl FnExecutor<EditFileArgs, EditResult> for EditFileTool {
@@ -1176,6 +1218,12 @@ impl FnDeclarator<EditFileArgs, EditResult> for EditFileTool {
 // Search in File Tool
 // ============================================================================
 
+impl SearchInFileTool {
+    pub fn new(config: Arc<FileSystemConfig>) -> Self {
+        Self { config }
+    }
+}
+
 #[async_trait::async_trait]
 impl FnExecutor<SearchInFileArgs, SearchResult> for SearchInFileTool {
     async fn call(&self, args: SearchInFileArgs) -> crate::Result<SearchResult> {
@@ -1242,6 +1290,12 @@ impl FnDeclarator<SearchInFileArgs, SearchResult> for SearchInFileTool {
 // Create Directory Tool
 // ============================================================================
 
+impl CreateDirectoryTool {
+    pub fn new(config: Arc<FileSystemConfig>) -> Self {
+        Self { config }
+    }
+}
+
 #[async_trait::async_trait]
 impl FnExecutor<CreateDirectoryArgs, FileOperationResult> for CreateDirectoryTool {
     async fn call(&self, args: CreateDirectoryArgs) -> crate::Result<FileOperationResult> {
@@ -1285,6 +1339,12 @@ impl FnDeclarator<CreateDirectoryArgs, FileOperationResult> for CreateDirectoryT
 // ============================================================================
 // Delete Tool
 // ============================================================================
+
+impl DeleteTool {
+    pub fn new(config: Arc<FileSystemConfig>) -> Self {
+        Self { config }
+    }
+}
 
 #[async_trait::async_trait]
 impl FnExecutor<DeleteArgs, FileOperationResult> for DeleteTool {
@@ -1337,6 +1397,12 @@ impl FnDeclarator<DeleteArgs, FileOperationResult> for DeleteTool {
 // Move Tool
 // ============================================================================
 
+impl MoveTool {
+    pub fn new(config: Arc<FileSystemConfig>) -> Self {
+        Self { config }
+    }
+}
+
 #[async_trait::async_trait]
 impl FnExecutor<MoveArgs, FileOperationResult> for MoveTool {
     async fn call(&self, args: MoveArgs) -> crate::Result<FileOperationResult> {
@@ -1386,6 +1452,12 @@ impl FnDeclarator<MoveArgs, FileOperationResult> for MoveTool {
 // ============================================================================
 // Copy Tool
 // ============================================================================
+
+impl CopyTool {
+    pub fn new(config: Arc<FileSystemConfig>) -> Self {
+        Self { config }
+    }
+}
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dst)?;
@@ -1464,6 +1536,12 @@ impl FnDeclarator<CopyArgs, FileOperationResult> for CopyTool {
 // ============================================================================
 // File Info Tool
 // ============================================================================
+
+impl FileInfoTool {
+    pub fn new(config: Arc<FileSystemConfig>) -> Self {
+        Self { config }
+    }
+}
 
 #[async_trait::async_trait]
 impl FnExecutor<FileInfoArgs, FileInfo> for FileInfoTool {
