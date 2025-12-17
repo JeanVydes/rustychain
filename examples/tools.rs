@@ -1,5 +1,5 @@
-use rustychain::{Inference, prelude::*};
 use rustychain::tools::search::DuckDuckGoSearchTool;
+use rustychain::{Inference, prelude::*};
 use rustychain::{LLM, LLMProvider};
 
 #[tokio::main]

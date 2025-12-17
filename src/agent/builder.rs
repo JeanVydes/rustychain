@@ -1,4 +1,4 @@
-use crate::{LLM, Inference, agent::definitions::Agent};
+use crate::{Inference, LLM, agent::definitions::Agent};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 

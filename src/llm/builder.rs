@@ -1,6 +1,4 @@
-use crate::{
-    llm::{AnyFunction, LLM, LLMProvider},
-};
+use crate::llm::{AnyFunction, LLM, LLMProvider};
 use std::sync::Arc;
 
 /// Builder for constructing LLM instances with customizable parameters.

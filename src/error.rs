@@ -32,7 +32,7 @@ pub enum Error {
     #[error("Ollama Error: {0}")]
     Ollama(#[from] OllamaError),
 
-    /// OpenAI provider errors
+    #[cfg(feature = "openai")]
     #[error("OpenAI Error: {0}")]
     OpenAI(#[from] openai_api_rs::v1::error::APIError),
 
@@ -203,8 +203,8 @@ impl From<base64::DecodeError> for Error {
     }
 }
 
-
-impl <'a> From<scraper::error::SelectorErrorKind<'a>> for Error {
+#[cfg(feature = "tools")]
+impl<'a> From<scraper::error::SelectorErrorKind<'a>> for Error {
     fn from(err: scraper::error::SelectorErrorKind<'a>) -> Self {
         Error::Scraper(format!("Selector Error: {}", err))
     }

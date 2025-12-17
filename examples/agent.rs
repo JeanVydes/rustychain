@@ -40,7 +40,9 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .build();
 
     let mut step_count = 0;
-    while let Some(step) = agent.next().await && step_count <= 20 {
+    while let Some(step) = agent.next().await
+        && step_count <= 20
+    {
         step_count += 1;
         if let Ok(step) = step {
             match step {

@@ -23,7 +23,7 @@ pub struct InferenceTask<'a> {
     pub llm: Arc<LLM>,
 }
 
-impl <'a> InferenceTask<'a> {
+impl<'a> InferenceTask<'a> {
     pub fn new(inference: Inference, llm: Arc<LLM>) -> Self {
         Self {
             history: &[],

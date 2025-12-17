@@ -173,10 +173,7 @@ impl ScrappingTool {
         log::trace!("Scraping URL: {}", url);
 
         // Fetch the page
-        let response = client
-            .get(url.as_str())
-            .send()
-            .await?;
+        let response = client.get(url.as_str()).send().await?;
 
         // Check status
         if !response.status().is_success() {
@@ -368,19 +365,18 @@ impl ScrappingTool {
         document: &Html,
         options: &ScrappingOptions,
     ) -> crate::Result<String> {
-        let selectors =
-            options
-                .css_selectors
-                .as_ref()
-                .ok_or_else(|| crate::Error::Validation {
-                    message: "css_selectors required for selective mode".to_string(),
-                })?;
+        let selectors = options
+            .css_selectors
+            .as_ref()
+            .ok_or_else(|| crate::Error::Validation {
+                message: "css_selectors required for selective mode".to_string(),
+            })?;
 
         let mut extracted = String::new();
 
         for selector_str in selectors {
-            let selector = Selector::parse(selector_str)
-                .map_err(|e| crate::Error::Scraper(e.to_string()))?;
+            let selector =
+                Selector::parse(selector_str).map_err(|e| crate::Error::Scraper(e.to_string()))?;
 
             for element in document.select(&selector) {
                 extracted.push_str(&element.html());
