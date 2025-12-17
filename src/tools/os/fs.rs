@@ -2,14 +2,6 @@
 //!
 //! This module provides filesystem tools with security controls for agents.
 //! Each filesystem operation is implemented as an individual tool.
-//!
-//! Advanced features include:
-//! - Precise line-based editing like modern code editors
-//! - Search and replace operations
-//! - Directory operations (create, delete, move, copy)
-//! - File metadata inspection
-//! - Symbolic link handling
-//! - Atomic operations where possible
 
 use crate::FunctionDeclaration;
 use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};

@@ -40,6 +40,8 @@ pub mod prelude {
     };
     #[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
     pub use crate::llm::{LLM, LLMEmbedding, LLMGeneration, LLMProvider, LLMStreaming};
+    pub use crate::util::formatters::Cleaner;
+    pub use crate::util::formatters::Formatter;
     #[cfg(feature = "macros")]
     pub use rustychain_macros::*;
     pub use schemars::JsonSchema;

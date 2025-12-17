@@ -2,21 +2,15 @@
 //!
 //! A comprehensive and LLM-friendly web scraping tool with intelligent content extraction,
 //! cleaning, and formatting capabilities.
-//!
-//! # Features
-//!
-//! - Smart content extraction with multiple strategies
-//! - Automatic readability mode for article content
-//! - CSS selector support with optional exclusions
-//! - Intelligent text cleaning and formatting
-//! - Metadata extraction (title, description, author, etc.)
-//! - Support for different output formats (HTML, Markdown, Plain Text)
-//! - Rate limiting and retry logic
-//! - Image and link extraction
-//! - Table extraction and formatting
-//! - JavaScript rendering support (optional)
 
-use crate::{FnDeclarator, FnExecutor, FunctionDeclaration, ToolArgs, util::UserAgentFactory};
+use crate::{
+    FnDeclarator, FnExecutor, FunctionDeclaration, ToolArgs,
+    prelude::{Cleaner, Formatter},
+    util::{
+        UserAgentFactory,
+        formatters::{html::HtmlFormatter, whitespace::WhitespaceFormatter},
+    },
+};
 use schemars::JsonSchema;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
@@ -280,7 +274,7 @@ impl ScrappingTool {
         }
 
         if options.clean_content.unwrap_or(true) {
-            html = self.clean_html(&html);
+            html = WhitespaceFormatter::clean_html(&html);
         }
 
         Ok(html)
@@ -353,7 +347,7 @@ impl ScrappingTool {
         }
 
         if options.clean_content.unwrap_or(true) {
-            best_content = self.clean_html(&best_content);
+            best_content = WhitespaceFormatter::clean_html(&best_content);
         }
 
         Ok(best_content)
@@ -398,7 +392,7 @@ impl ScrappingTool {
         }
 
         if options.clean_content.unwrap_or(true) {
-            extracted = self.clean_html(&extracted);
+            extracted = WhitespaceFormatter::clean_html(&extracted);
         }
 
         Ok(extracted)
@@ -436,7 +430,7 @@ impl ScrappingTool {
         }
 
         if options.clean_content.unwrap_or(true) {
-            text = self.clean_text(&text);
+            text = WhitespaceFormatter::clean_text(&text);
         }
 
         Ok(text)
@@ -607,121 +601,14 @@ impl ScrappingTool {
     ) -> crate::Result<String> {
         match format {
             OutputFormat::Html => Ok(content.to_string()),
-            OutputFormat::Markdown => self.html_to_markdown(content),
+            OutputFormat::Markdown => HtmlFormatter::to_markdown(content),
             OutputFormat::PlainText => {
                 let doc = Html::parse_fragment(content);
                 let text = doc.root_element().text().collect::<Vec<_>>().join(" ");
-                Ok(self.clean_text(&text))
+                Ok(WhitespaceFormatter::clean_text(&text))
             }
             OutputFormat::Json => Ok(content.to_string()), // Return as-is for JSON wrapper
         }
-    }
-
-    /// Convert HTML to Markdown
-    fn html_to_markdown(&self, html: &str) -> crate::Result<String> {
-        let document = Html::parse_fragment(html);
-        let mut markdown = String::new();
-
-        // Use selector-based approach for better compatibility
-        self.html_to_markdown_recursive(&document, "body", &mut markdown)?;
-
-        // If no body, try root elements
-        if markdown.trim().is_empty() {
-            self.extract_text_from_html(&document, &mut markdown)?;
-        }
-
-        Ok(self.clean_text(&markdown))
-    }
-
-    /// Recursively convert HTML elements to Markdown
-    fn html_to_markdown_recursive(
-        &self,
-        document: &Html,
-        _start_selector: &str,
-        output: &mut String,
-    ) -> crate::Result<()> {
-        // Process different element types
-        let element_map = vec![
-            ("h1", "\n# ", "\n"),
-            ("h2", "\n## ", "\n"),
-            ("h3", "\n### ", "\n"),
-            ("h4", "\n#### ", "\n"),
-            ("h5", "\n##### ", "\n"),
-            ("h6", "\n###### ", "\n"),
-            ("p", "\n\n", "\n"),
-            ("li", "\n- ", ""),
-            ("strong", "**", "**"),
-            ("b", "**", "**"),
-            ("em", "*", "*"),
-            ("i", "*", "*"),
-            ("code", "`", "`"),
-        ];
-
-        // Process each element type
-        for (selector_str, prefix, suffix) in element_map {
-            if let Ok(selector) = Selector::parse(selector_str) {
-                for element in document.select(&selector) {
-                    output.push_str(prefix);
-                    let text: String = element.text().collect();
-                    output.push_str(text.trim());
-                    output.push_str(suffix);
-                }
-            }
-        }
-
-        // Process links specially
-        if let Ok(link_selector) = Selector::parse("a[href]") {
-            for element in document.select(&link_selector) {
-                let text: String = element.text().collect();
-                if let Some(href) = element.value().attr("href") {
-                    output.push('[');
-                    output.push_str(text.trim());
-                    output.push_str("](");
-                    output.push_str(href);
-                    output.push(')');
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Extract text from HTML as fallback
-    fn extract_text_from_html(&self, document: &Html, output: &mut String) -> crate::Result<()> {
-        // Try multiple selectors for content
-        let selectors = vec!["body", "main", "article", "div"];
-
-        for selector_str in selectors {
-            if let Ok(selector) = Selector::parse(selector_str)
-                && let Some(element) = document.select(&selector).next()
-            {
-                let text: String = element.text().collect();
-                if !text.trim().is_empty() {
-                    output.push_str(&text);
-                    return Ok(());
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Clean HTML by removing extra whitespace
-    fn clean_html(&self, html: &str) -> String {
-        html.lines()
-            .map(|line| line.trim())
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-
-    /// Clean text by normalizing whitespace
-    fn clean_text(&self, text: &str) -> String {
-        text.split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-            .trim()
-            .to_string()
     }
 }
 
