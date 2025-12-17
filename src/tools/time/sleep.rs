@@ -22,6 +22,12 @@ impl ToolArgs for WaitArgs {}
 #[derive(Clone, Default)]
 pub struct WaitTool;
 
+impl WaitTool {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WaitResult {
     pub waited_seconds: u64,
