@@ -16,6 +16,7 @@ use crate::{
 /// This is a unified representation that can be converted to/from various LLM formats.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Inference {
+    pub model: Option<String>,
     pub content: InferenceContent,
 
     pub thinking: Option<String>,
@@ -23,6 +24,14 @@ pub struct Inference {
     pub function_results: Vec<FunctionResult>,
 
     pub finish_reason: Option<FinishReason>,
+    pub usage: Option<UsageMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageMetadata {
+    pub prompt_tokens: usize,
+    pub completion_tokens: usize,
+    pub total_tokens: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,10 +46,7 @@ impl Inference {
     pub fn new(content: InferenceContent) -> Self {
         Self {
             content,
-            thinking: None,
-            function_calls: vec![],
-            function_results: vec![],
-            finish_reason: None,
+            ..Default::default()
         }
     }
 
@@ -77,10 +83,8 @@ impl Inference {
                 audio: None,
                 images: None,
             },
-            thinking: None,
-            function_calls: vec![],
             function_results: results,
-            finish_reason: None,
+            ..Default::default()
         }
     }
 
@@ -291,16 +295,14 @@ impl Inference {
                 let message = format!("No candidates in response: {:?}", gemini_message);
 
                 return Inference {
+                    model: gemini_message.model_version,
                     content: InferenceContent {
                         role: Role::Assistant,
                         text: Some(message),
                         audio: None,
                         images: None,
                     },
-                    thinking: None,
-                    function_calls: vec![],
-                    function_results: vec![],
-                    finish_reason: None,
+                    ..Default::default()
                 };
             }
         };
@@ -331,12 +333,13 @@ impl Inference {
             }
         }
 
-        let finish_reason = candidate
-            .finish_reason
-            .as_ref()
-            .map(FinishReason::from_google);
+        let finish_reason = match &candidate.finish_reason {
+            Some(t) => Some(FinishReason::from_google(&t)),
+            None => None,
+        };
 
         Inference {
+            model: gemini_message.model_version.clone(),
             content: InferenceContent {
                 role: Role::Assistant,
                 text: if message_parts.is_empty() {
@@ -352,10 +355,10 @@ impl Inference {
                 },
                 images: None,
             },
-            thinking: None,
+            thinking: gemini_message.thoughts().join("\n").into(),
             function_calls,
-            function_results: vec![],
             finish_reason,
+            ..Default::default()
         }
     }
 
@@ -375,6 +378,7 @@ impl Inference {
         };
 
         Inference {
+            model: Some(ollama_message.model),
             content: InferenceContent {
                 role: match ollama_message.message.role {
                     MessageRole::User => Role::User,
@@ -393,8 +397,8 @@ impl Inference {
                 .into_iter()
                 .map(FunctionCall::from_ollama)
                 .collect(),
-            function_results: vec![],
             finish_reason,
+            ..Default::default()
         }
     }
 
@@ -415,6 +419,8 @@ impl Inference {
         let finish_reason = choice.finish_reason.as_ref().map(FinishReason::from_openai);
 
         Inference {
+            // i think name is not the model name
+            model: choice.message.name.clone(),
             content: InferenceContent {
                 role: match choice.message.role {
                     openai_api_rs::v1::chat_completion::MessageRole::user => Role::User,
@@ -427,10 +433,10 @@ impl Inference {
                 audio: None,
                 images: None,
             },
-            thinking: None,
+            thinking: choice.message.reasoning_content.clone(),
             function_calls,
-            function_results: vec![],
             finish_reason,
+            ..Default::default()
         }
     }
 
@@ -446,13 +452,12 @@ impl Inference {
                     audio: None,
                     images: None,
                 },
-                thinking: None,
                 function_calls: toolcalls
                     .iter()
                     .map(|tc| FunctionCall::from_openai(tc.clone()))
                     .collect(),
-                function_results: vec![],
                 finish_reason: Some(FinishReason::ToolCall),
+                ..Default::default()
             }),
             ChatCompletionStreamResponse::Content(content) => Ok(Inference {
                 content: InferenceContent {
@@ -461,10 +466,8 @@ impl Inference {
                     audio: None,
                     images: None,
                 },
-                thinking: None,
-                function_calls: vec![],
-                function_results: vec![],
                 finish_reason: Some(FinishReason::Stop),
+                ..Default::default()
             }),
             ChatCompletionStreamResponse::Done => Ok(Inference {
                 content: InferenceContent {
@@ -473,10 +476,8 @@ impl Inference {
                     audio: None,
                     images: None,
                 },
-                thinking: None,
-                function_calls: vec![],
-                function_results: vec![],
                 finish_reason: Some(FinishReason::Stop),
+                ..Default::default()
             }),
         }
     }
@@ -485,5 +486,24 @@ impl Inference {
 impl Display for Inference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:#?}", self)
+    }
+}
+
+impl Default for Inference {
+    fn default() -> Self {
+        Self {
+            model: None,
+            content: InferenceContent {
+                role: Role::Assistant,
+                text: None,
+                audio: None,
+                images: None,
+            },
+            thinking: None,
+            function_calls: vec![],
+            function_results: vec![],
+            finish_reason: None,
+            usage: None,
+        }
     }
 }
