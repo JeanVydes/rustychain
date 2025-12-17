@@ -9,7 +9,7 @@ pub trait Formatter {
 
     fn to_json(text: &str) -> crate::Result<String>;
     fn from_json(json: &str) -> crate::Result<String>;
-
+    
     fn to_html(text: &str) -> crate::Result<String>;
     fn from_html(html: &str) -> crate::Result<String>;
 }

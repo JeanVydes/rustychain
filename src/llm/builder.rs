@@ -35,6 +35,18 @@ impl LLMBuilder {
             }
         };
 
+        let mut names = Vec::new();
+        for tool in &self.tools {
+            if names.contains(&tool.name().to_owned()) {
+                return Err(crate::Error::Input(format!(
+                    "Duplicate tool name detected: {}",
+                    tool.name()
+                )));
+            }
+
+            names.push(tool.name().to_owned());
+        }
+
         Ok(LLM {
             model,
             system_prompt: self.system_prompt.unwrap_or_default(),
