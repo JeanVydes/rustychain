@@ -38,15 +38,14 @@ impl Formatter for HtmlFormatter {
         let mut paragraph_buffer = String::new();
 
         // Helper closure to flush paragraph buffer
-        let flush_paragraph =
-            |buffer: &mut String, html_out: &mut String| -> crate::Result<()> {
-                if !buffer.is_empty() {
-                    let processed = Self::process_inline_markdown(buffer.trim())?;
-                    html_out.push_str(&format!("<p>{}</p>\n", processed));
-                    buffer.clear();
-                }
-                Ok(())
-            };
+        let flush_paragraph = |buffer: &mut String, html_out: &mut String| -> crate::Result<()> {
+            if !buffer.is_empty() {
+                let processed = Self::process_inline_markdown(buffer.trim())?;
+                html_out.push_str(&format!("<p>{}</p>\n", processed));
+                buffer.clear();
+            }
+            Ok(())
+        };
 
         while i < lines.len() {
             let line = lines[i];
@@ -247,7 +246,7 @@ impl Formatter for HtmlFormatter {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .ok_or_else(|| {
-                crate::Error::Input("'content' field missing or not a string".into()).into()
+                crate::Error::Input("'content' field missing or not a string".into())
             })
     }
 }
@@ -568,15 +567,14 @@ impl HtmlFormatter {
 
         while i < chars.len() {
             // Bold: **text** or __text__
-            if i + 1 < chars.len() && chars[i] == '*' && chars[i + 1] == '*' {
-                if let Some(end) = Self::find_closing(&chars, i + 2, "**") {
+            if i + 1 < chars.len() && chars[i] == '*' && chars[i + 1] == '*'
+                && let Some(end) = Self::find_closing(&chars, i + 2, "**") {
                     result.push_str("<strong>");
                     result.push_str(&chars[i + 2..end].iter().collect::<String>());
                     result.push_str("</strong>");
                     i = end + 2;
                     continue;
                 }
-            }
 
             // Italic: *text* or _text_
             if chars[i] == '*' || chars[i] == '_' {
@@ -591,8 +589,8 @@ impl HtmlFormatter {
             }
 
             // Code: `text`
-            if chars[i] == '`' {
-                if let Some(end) = Self::find_closing_char(&chars, i + 1, '`') {
+            if chars[i] == '`'
+                && let Some(end) = Self::find_closing_char(&chars, i + 1, '`') {
                     result.push_str("<code>");
                     result.push_str(&Self::escape_html(
                         &chars[i + 1..end].iter().collect::<String>(),
@@ -601,11 +599,10 @@ impl HtmlFormatter {
                     i = end + 1;
                     continue;
                 }
-            }
 
             // Links: [text](url)
-            if chars[i] == '[' {
-                if let Some((text_end, url_start, url_end)) = Self::parse_link(&chars, i) {
+            if chars[i] == '['
+                && let Some((text_end, url_start, url_end)) = Self::parse_link(&chars, i) {
                     let link_text = chars[i + 1..text_end].iter().collect::<String>();
                     let url = chars[url_start..url_end].iter().collect::<String>();
                     result.push_str(&format!(
@@ -616,11 +613,10 @@ impl HtmlFormatter {
                     i = url_end + 1;
                     continue;
                 }
-            }
 
             // Images: ![alt](src)
-            if chars[i] == '!' && i + 1 < chars.len() && chars[i + 1] == '[' {
-                if let Some((text_end, url_start, url_end)) = Self::parse_link(&chars, i + 1) {
+            if chars[i] == '!' && i + 1 < chars.len() && chars[i + 1] == '['
+                && let Some((text_end, url_start, url_end)) = Self::parse_link(&chars, i + 1) {
                     let alt = chars[i + 2..text_end].iter().collect::<String>();
                     let src = chars[url_start..url_end].iter().collect::<String>();
                     result.push_str(&format!(
@@ -631,18 +627,16 @@ impl HtmlFormatter {
                     i = url_end + 1;
                     continue;
                 }
-            }
 
             // Strikethrough: ~~text~~
-            if i + 1 < chars.len() && chars[i] == '~' && chars[i + 1] == '~' {
-                if let Some(end) = Self::find_closing(&chars, i + 2, "~~") {
+            if i + 1 < chars.len() && chars[i] == '~' && chars[i + 1] == '~'
+                && let Some(end) = Self::find_closing(&chars, i + 2, "~~") {
                     result.push_str("<del>");
                     result.push_str(&chars[i + 2..end].iter().collect::<String>());
                     result.push_str("</del>");
                     i = end + 2;
                     continue;
                 }
-            }
 
             // Escape HTML special characters
             match chars[i] {

@@ -1,6 +1,6 @@
 use rustychain::agent::definitions::{Agent, AgentStep};
+use rustychain::tools::integrations::search::DuckDuckGoSearchTool;
 use rustychain::tools::scraping::ScrappingTool;
-use rustychain::tools::search::DuckDuckGoSearchTool;
 use rustychain::{GenerationConfig, Inference, prelude::*};
 use rustychain::{LLM, LLMProvider};
 use std::sync::Arc;

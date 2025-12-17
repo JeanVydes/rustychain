@@ -333,10 +333,7 @@ impl Inference {
             }
         }
 
-        let finish_reason = match &candidate.finish_reason {
-            Some(t) => Some(FinishReason::from_google(&t)),
-            None => None,
-        };
+        let finish_reason = candidate.finish_reason.as_ref().map(|t| FinishReason::from_google(t));
 
         Inference {
             model: gemini_message.model_version.clone(),

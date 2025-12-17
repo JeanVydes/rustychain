@@ -8,3 +8,6 @@
 pub mod pgvector;
 #[cfg(feature = "postgres")]
 pub use pgvector::*;
+
+pub mod lru;
+pub use lru::*;

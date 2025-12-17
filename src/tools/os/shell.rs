@@ -188,6 +188,10 @@ impl Default for CommandTool {
 impl CommandTool {
     /// Create a new CommandTool with default settings.
     pub fn new() -> Self {
+        log::warn!(
+            "CommandTool allows executing arbitrary OS commands. Ensure you trust the source of commands to avoid security risks."
+        );
+        log::warn!("This module still in development and may have bugs, also IS NOT SANDBOXED.");
         Self {
             input_callback: None,
             additional_patterns: vec![],

@@ -106,6 +106,12 @@ pub enum Error {
         source: Box<dyn StdError + Send + Sync>,
     },
 
+    #[cfg(feature = "tools")]
+    #[error("Argon2 Error: {source}")]
+    Argon2 {
+        source: Box<dyn StdError + Send + Sync>,
+    },
+
     /// Rate limit errors
     #[error("Rate limit exceeded. Retry after {retry_after_secs} seconds")]
     RateLimit { retry_after_secs: u64 },
@@ -207,5 +213,14 @@ impl From<base64::DecodeError> for Error {
 impl<'a> From<scraper::error::SelectorErrorKind<'a>> for Error {
     fn from(err: scraper::error::SelectorErrorKind<'a>) -> Self {
         Error::Scraper(format!("Selector Error: {}", err))
+    }
+}
+
+#[cfg(feature = "tools")]
+impl From<argon2::password_hash::Error> for Error {
+    fn from(err: argon2::password_hash::Error) -> Self {
+        Error::Argon2 {
+            source: Box::from(err.to_string()),
+        }
     }
 }

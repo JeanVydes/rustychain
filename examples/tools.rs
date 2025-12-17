@@ -1,4 +1,4 @@
-use rustychain::tools::search::DuckDuckGoSearchTool;
+use rustychain::tools::integrations::search::DuckDuckGoSearchTool;
 use rustychain::{Inference, prelude::*};
 use rustychain::{LLM, LLMProvider};
 

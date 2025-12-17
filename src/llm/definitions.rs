@@ -377,9 +377,9 @@ impl LLM {
             client = client.with_endpoint(endpoint.clone());
         }
 
-        let client = client.build().map_err(|e| {
-            crate::Error::Generic(format!("Failed to build OpenAI client: {}", e.to_string()))
-        })?;
+        let client = client
+            .build()
+            .map_err(|e| crate::Error::Generic(format!("Failed to build OpenAI client: {}", e)))?;
 
         Ok(client)
     }

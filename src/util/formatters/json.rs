@@ -1,5 +1,5 @@
 use crate::util::formatters::{Cleaner, Formatter, whitespace::WhitespaceFormatter};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub struct JsonFormatter;
 
@@ -9,7 +9,7 @@ impl Formatter for JsonFormatter {
         // Validate and prettify the JSON first to ensure it is readable in Markdown
         let value: Value = serde_json::from_str(json_str)
             .map_err(|e| crate::Error::Input(format!("Invalid JSON input: {}", e)))?;
-        
+
         let pretty_json = serde_json::to_string_pretty(&value)
             .map_err(|e| crate::Error::Input(format!("Failed to serialize JSON: {}", e)))?;
 
@@ -19,7 +19,7 @@ impl Formatter for JsonFormatter {
     /// Convert Markdown text into a JSON object structure
     fn from_markdown(markdown: &str) -> crate::Result<String> {
         let clean_markdown = WhitespaceFormatter::clean_text(markdown);
-        
+
         let json_output = json!({
             "content": clean_markdown,
             "format": "markdown"
@@ -33,7 +33,7 @@ impl Formatter for JsonFormatter {
         // Validate and prettify
         let value: Value = serde_json::from_str(json_str)
             .map_err(|e| crate::Error::Input(format!("Invalid JSON input: {}", e)))?;
-        
+
         let pretty_json = serde_json::to_string_pretty(&value)
             .map_err(|e| crate::Error::Input(format!("Failed to serialize JSON: {}", e)))?;
 
@@ -69,7 +69,7 @@ impl Formatter for JsonFormatter {
             .map_err(|e| crate::Error::Input(format!("Invalid JSON input: {}", e)))?;
 
         serde_json::to_string_pretty(&value)
-            .map_err(|e| crate::Error::Input(format!("Failed to format JSON: {}", e)).into())
+            .map_err(|e| crate::Error::Input(format!("Failed to format JSON: {}", e)))
     }
 
     /// Minify JSON (Identity transformation removing whitespace)
@@ -78,6 +78,6 @@ impl Formatter for JsonFormatter {
             .map_err(|e| crate::Error::Input(format!("Invalid JSON input: {}", e)))?;
 
         serde_json::to_string(&value)
-            .map_err(|e| crate::Error::Input(format!("Failed to minify JSON: {}", e)).into())
+            .map_err(|e| crate::Error::Input(format!("Failed to minify JSON: {}", e)))
     }
 }

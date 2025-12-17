@@ -38,7 +38,11 @@
 //! }
 //! ```
 
-use crate::tools::search::definitions::*;
+use crate::tools::integrations::search::SearchProvider;
+use crate::tools::integrations::search::definitions::{
+    CACHE_CAPACITY, MAX_RESULTS_LIMIT, MIN_RESULTS_LIMIT, RATE_LIMIT_DELAY_MS,
+    REQUEST_TIMEOUT_SECS, SearchResult, default_max_results, default_region, default_use_cache,
+};
 
 use crate::{
     FnDeclarator, FunctionDeclaration,
@@ -459,39 +463,30 @@ impl DuckDuckGoSearchTool {
 
     /// Extracts the actual URL from DuckDuckGo's redirect link
     fn extract_url(&self, href: &str) -> Option<String> {
-        // DuckDuckGo URLs look like: //duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com...
         if let Some(start) = href.find("uddg=") {
             let encoded = &href[start + 5..];
-            // Find the end of the URL (next & or end of string)
             let end = encoded.find('&').unwrap_or(encoded.len());
             let encoded_url = &encoded[..end];
 
-            // URL decode
-            match urlencoding::decode(encoded_url) {
-                Ok(decoded) => {
-                    log::trace!("Decoded URL: {}", decoded);
-                    return Some(decoded.to_string());
-                }
+            return match urlencoding::decode(encoded_url) {
+                Ok(decoded) => Some(decoded.to_string()),
                 Err(e) => {
                     log::trace!("Failed to decode URL '{}': {}", encoded_url, e);
-                    return None;
+                    None
                 }
-            }
+            };
         }
 
-        // Direct URL
+        if href.contains("duckduckgo.com") {
+            return None;
+        }
+
         if href.starts_with("http://") || href.starts_with("https://") {
             return Some(href.to_string());
         }
 
-        // Handle protocol-relative URLs
         if href.starts_with("//") {
             return Some(format!("https:{}", href));
-        }
-
-        // Reject internal DuckDuckGo links
-        if href.contains("duckduckgo.com") && !href.contains("uddg=") {
-            return None;
         }
 
         log::trace!("Could not extract URL from: {}", href);

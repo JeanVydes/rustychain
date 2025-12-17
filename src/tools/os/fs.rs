@@ -71,12 +71,12 @@ impl FileSystemConfig {
 
         // Check if path is hidden and if that's allowed
         if !self.allow_hidden_files {
-            if let Some(name) = requested_path.file_name() {
-                if name.to_string_lossy().starts_with('.') {
-                    return Err(crate::Error::Input(
-                        "Access to hidden files is not allowed".to_string(),
-                    ));
-                }
+            if let Some(name) = requested_path.file_name()
+                && name.to_string_lossy().starts_with('.')
+            {
+                return Err(crate::Error::Input(
+                    "Access to hidden files is not allowed".to_string(),
+                ));
             }
         }
 
@@ -1188,7 +1188,7 @@ impl FnExecutor<EditFileArgs, EditResult> for EditFileTool {
             Some(lines.iter().take(5).cloned().collect::<Vec<_>>().join("\n") + "\n...")
         };
 
-        let mut message = format!("Successfully edited file");
+        let mut message = "Successfully edited file".to_string();
         if let Some(count) = replacements_made {
             message.push_str(&format!(" ({} replacements made)", count));
         }

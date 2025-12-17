@@ -84,14 +84,14 @@ impl Agent {
                 FinishReason::UnexpectedToolCall => {
                     return Ok(AgentStep::ToolReturn(Inference::with_content(
                         Role::User,
-                        "LLM attempted to call a tool unexpectedly.".to_owned(),
+                        "Agent attempted to call a tool unexpectedly.".to_owned(),
                     )));
                 }
                 FinishReason::TooManyToolCalls => {
-                    log::debug!("LLM made too many tool calls in a single response.");
+                    log::debug!("Agent made too many tool calls in a single response.");
                 }
                 FinishReason::MaxTokens => {
-                    log::debug!("LLM response exceeded maximum token limit.");
+                    log::debug!("Agent response exceeded maximum token limit.");
                 }
                 _ => { /* No action needed for other finish reasons */ }
             }

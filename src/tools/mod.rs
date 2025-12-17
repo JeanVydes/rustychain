@@ -6,8 +6,14 @@
 //!
 //! The idea is to provide boilerplate tools that can be used out of the box
 
+pub mod crypto;
+pub mod encoding;
+pub mod integrations;
 pub mod math;
+pub mod net;
 pub mod os;
+pub mod runners;
 pub mod scraping;
-pub mod search;
 pub mod storage;
+pub mod text;
+pub mod time;
