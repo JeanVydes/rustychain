@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{FromRow, Pool, Postgres, Row};
 
-use crate::CoreError;
+use crate::Error;
 
 pub const DEFAULT_TABLE_NAME: &str = "rag_documents";
 pub const DEFAULT_DIMENSIONS: i32 = 1536;
@@ -147,7 +147,7 @@ impl VectorStore {
                 };
 
                 if !ignore {
-                    return Err(Box::new(e));
+                    return Err(e.into());
                 }
             }
         }
@@ -394,9 +394,7 @@ impl VectorStore {
         let results = self.search(query_embedding, SearchOptions::new(k)).await?;
 
         if results.is_empty() {
-            return Err(Box::new(CoreError::NotFound(
-                "No relevant documents found.".to_string(),
-            )));
+            return Err(Error::NotFound("No relevant documents found.".to_string()));
         }
 
         let context = results

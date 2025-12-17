@@ -29,6 +29,15 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 
+## Documentation
+
+Project documentation is in the `docs/` folder. There are two targeted doc sets:
+
+- `docs/contributors/` — Developer-focused guides (building, testing, contributing).
+- `docs/wiki/` — User-facing guides and how-tos suitable for a GitHub Wiki or publishing to a website.
+
+Open `docs/README.md` for an index of available guides.
+
 ---
 
 Built with ❤️

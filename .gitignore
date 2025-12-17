@@ -15,3 +15,5 @@ dist/
 build/
 out/
 *.lock
+# not well documented yet
+docs/

@@ -1,6 +1,6 @@
 use rustychain::chain::Chain;
-use rustychain::prelude::*;
-use rustychain::{LLM, LLMProvider, Message};
+use rustychain::{Inference, prelude::*};
+use rustychain::{LLM, LLMProvider};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -30,11 +30,12 @@ impl Summarizer {
 
         let response = self
             .llm
-            .inference(Message::user(prompt))
+            .inference(Inference::as_user(prompt))
             .generate()
             .await?
-            .message
-            .ok_or_else(|| rustychain::CoreError::NoContent)?;
+            .content
+            .text
+            .ok_or_else(|| rustychain::Error::NoContent)?;
 
         Ok(response)
     }
@@ -70,7 +71,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'sta
     let llm = Arc::new(
         LLM::builder()
             .set_authorization(auth)
-            .set_name("gemini-2.5-flash".to_owned())
+            .set_model("gemini-2.5-flash".to_owned())
             .set_provider(LLMProvider::Google)
             .set_system_prompt("You are a helpful assistant.".to_owned())
             .build()?,

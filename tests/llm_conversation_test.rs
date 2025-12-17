@@ -1,9 +1,10 @@
 #![cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
 //! Unit tests for Conversation types
 //!
-//! Tests Message, Role conversions and serialization consistency
+//! Tests Inference, Role conversions and serialization consistency
 
-use rustychain::llm::{FunctionCall, FunctionResult, Message, Role};
+use ollama_rs::generation::chat::MessageRole;
+use rustychain::llm::{FunctionCall, FunctionResult, Inference, Role};
 use serde_json::json;
 
 // ============================================================================
@@ -89,68 +90,44 @@ fn test_role_hash_consistent() {
 }
 
 // ============================================================================
-// Message Tests
+// Inference Tests
 // ============================================================================
 
 #[test]
-fn test_message_basic_creation() {
-    let msg = Message {
-        role: Role::User,
-        message: Some("Hello".to_string()),
-        audio: None,
-        images: None,
-        thinking: None,
-        function_calls: vec![],
-        function_results: vec![],
-    };
+fn test_inference_basic_creation() {
+    let msg = Inference::as_user("Hello");
 
-    assert_eq!(msg.role, Role::User);
-    assert_eq!(msg.message, Some("Hello".to_string()));
+    assert_eq!(msg.content.role, Role::User);
+    assert_eq!(msg.content.text, Some("Hello".to_string()));
 }
 
 #[test]
-fn test_message_serialization_roundtrip() {
-    let original = Message {
-        role: Role::User,
-        message: Some("Test message".to_string()),
-        audio: None,
-        images: None,
-        thinking: Some("I'm thinking...".to_string()),
-        function_calls: vec![],
-        function_results: vec![],
-    };
+fn test_inference_serialization_roundtrip() {
+    let mut original = Inference::as_user("Test Inference");
+    original.thinking = Some("I'm thinking...".to_string());
 
     let serialized = serde_json::to_string(&original).unwrap();
-    let deserialized: Message = serde_json::from_str(&serialized).unwrap();
+    let deserialized: Inference = serde_json::from_str(&serialized).unwrap();
 
-    assert_eq!(original.role, deserialized.role);
-    assert_eq!(original.message, deserialized.message);
+    assert_eq!(original.content.role, deserialized.content.role);
+    assert_eq!(original.content.text, deserialized.content.text);
     assert_eq!(original.thinking, deserialized.thinking);
 }
 
 #[test]
-fn test_message_with_function_calls_roundtrip() {
-    let original = Message {
-        role: Role::Assistant,
-        message: None,
-        audio: None,
-        images: None,
-        thinking: None,
-        function_calls: vec![
-            FunctionCall {
-                name: "get_weather".to_string(),
-                arguments: json!({"city": "London"}),
-            },
-            FunctionCall {
-                name: "search".to_string(),
-                arguments: json!({"query": "rust programming"}),
-            },
-        ],
-        function_results: vec![],
-    };
+fn test_inference_with_function_calls_roundtrip() {
+    let mut original = Inference::as_assistant("");
+    original = original.add_function_call(FunctionCall {
+        name: "get_weather".to_string(),
+        arguments: json!({"city": "London"}),
+    });
+    original = original.add_function_call(FunctionCall {
+        name: "search".to_string(),
+        arguments: json!({"query": "rust programming"}),
+    });
 
     let serialized = serde_json::to_string(&original).unwrap();
-    let deserialized: Message = serde_json::from_str(&serialized).unwrap();
+    let deserialized: Inference = serde_json::from_str(&serialized).unwrap();
 
     assert_eq!(
         original.function_calls.len(),
@@ -167,22 +144,14 @@ fn test_message_with_function_calls_roundtrip() {
 }
 
 #[test]
-fn test_message_with_function_results_roundtrip() {
-    let original = Message {
-        role: Role::Tool,
-        message: None,
-        audio: None,
-        images: None,
-        thinking: None,
-        function_calls: vec![],
-        function_results: vec![FunctionResult {
-            name: "get_weather".to_string(),
-            results: json!({"temperature": 22, "condition": "sunny"}),
-        }],
-    };
+fn test_inference_with_function_results_roundtrip() {
+    let original = Inference::with_function_results(vec![FunctionResult {
+        name: "get_weather".to_string(),
+        results: json!({"temperature": 22, "condition": "sunny"}),
+    }]);
 
     let serialized = serde_json::to_string(&original).unwrap();
-    let deserialized: Message = serde_json::from_str(&serialized).unwrap();
+    let deserialized: Inference = serde_json::from_str(&serialized).unwrap();
 
     assert_eq!(
         original.function_results.len(),
@@ -199,16 +168,8 @@ fn test_message_with_function_results_roundtrip() {
 }
 
 #[test]
-fn test_message_serialization_deterministic() {
-    let msg = Message {
-        role: Role::User,
-        message: Some("Hello".to_string()),
-        audio: None,
-        images: None,
-        thinking: None,
-        function_calls: vec![],
-        function_results: vec![],
-    };
+fn test_inference_serialization_deterministic() {
+    let msg = Inference::as_user("Hello");
 
     // Serialize multiple times and verify consistency
     let serialized1 = serde_json::to_string(&msg).unwrap();
@@ -220,25 +181,20 @@ fn test_message_serialization_deterministic() {
 }
 
 #[test]
-fn test_message_clone() {
-    let original = Message {
-        role: Role::Assistant,
-        message: Some("Response".to_string()),
-        audio: Some(vec![1, 2, 3, 4]),
-        images: None,
-        thinking: Some("Thinking".to_string()),
-        function_calls: vec![FunctionCall {
-            name: "test".to_string(),
-            arguments: json!({}),
-        }],
-        function_results: vec![],
-    };
+fn test_inference_clone() {
+    let mut original = Inference::as_assistant("Response");
+    original = original.with_audio(vec![1, 2, 3, 4]);
+    original = original.add_function_call(FunctionCall {
+        name: "test".to_string(),
+        arguments: json!({}),
+    });
+    original.thinking = Some("Thinking".to_string());
 
     let cloned = original.clone();
 
-    assert_eq!(original.role, cloned.role);
-    assert_eq!(original.message, cloned.message);
-    assert_eq!(original.audio, cloned.audio);
+    assert_eq!(original.content.role, cloned.content.role);
+    assert_eq!(original.content.text, cloned.content.text);
+    assert_eq!(original.content.audio, cloned.content.audio);
     assert_eq!(original.thinking, cloned.thinking);
     assert_eq!(original.function_calls.len(), cloned.function_calls.len());
 }
@@ -374,19 +330,11 @@ fn test_function_result_with_error() {
 
 #[test]
 fn test_gemini_conversion_idempotent() {
-    let msg = Message {
-        role: Role::User,
-        message: Some("Test message".to_string()),
-        audio: None,
-        images: None,
-        thinking: None,
-        function_calls: vec![],
-        function_results: vec![],
-    };
+    let msg = Inference::as_user("Test Inference");
 
     // Convert multiple times and verify consistency
-    let gemini1 = msg.to_gemini();
-    let gemini2 = msg.to_gemini();
+    let gemini1 = msg.to_gemini_message();
+    let gemini2 = msg.to_gemini_message();
 
     // Content should be the same
     assert_eq!(
@@ -397,19 +345,11 @@ fn test_gemini_conversion_idempotent() {
 
 #[test]
 fn test_ollama_conversion_idempotent() {
-    let msg = Message {
-        role: Role::Assistant,
-        message: Some("Response".to_string()),
-        audio: None,
-        images: None,
-        thinking: None,
-        function_calls: vec![],
-        function_results: vec![],
-    };
+    let msg = Inference::as_assistant("Response");
 
     // Convert multiple times
-    let ollama1 = msg.to_ollama();
-    let ollama2 = msg.to_ollama();
+    let ollama1 = msg.to_ollama_message();
+    let ollama2 = msg.to_ollama_message();
 
     assert_eq!(ollama1.content, ollama2.content);
     assert_eq!(ollama1.role, ollama2.role);
@@ -417,28 +357,11 @@ fn test_ollama_conversion_idempotent() {
 
 #[test]
 fn test_role_to_gemini_mapping() {
-    let user_msg = Message {
-        role: Role::User,
-        message: Some("test".to_string()),
-        audio: None,
-        images: None,
-        thinking: None,
-        function_calls: vec![],
-        function_results: vec![],
-    };
+    let user_msg = Inference::as_user("test");
+    let assistant_msg = Inference::as_assistant("test");
 
-    let assistant_msg = Message {
-        role: Role::Assistant,
-        message: Some("test".to_string()),
-        audio: None,
-        images: None,
-        thinking: None,
-        function_calls: vec![],
-        function_results: vec![],
-    };
-
-    let gemini_user = user_msg.to_gemini();
-    let gemini_assistant = assistant_msg.to_gemini();
+    let gemini_user = user_msg.to_gemini_message();
+    let gemini_assistant = assistant_msg.to_gemini_message();
 
     assert_eq!(gemini_user.role, gemini_rust::Role::User);
     assert_eq!(gemini_assistant.role, gemini_rust::Role::Model);
@@ -446,8 +369,6 @@ fn test_role_to_gemini_mapping() {
 
 #[test]
 fn test_role_to_ollama_mapping() {
-    use ollama_rs::generation::chat::MessageRole;
-
     let roles = [
         (Role::User, MessageRole::User),
         (Role::Assistant, MessageRole::Assistant),
@@ -456,17 +377,9 @@ fn test_role_to_ollama_mapping() {
     ];
 
     for (our_role, expected_ollama_role) in roles {
-        let msg = Message {
-            role: our_role,
-            message: Some("test".to_string()),
-            audio: None,
-            images: None,
-            thinking: None,
-            function_calls: vec![],
-            function_results: vec![],
-        };
+        let msg = Inference::with_content(our_role, "test");
 
-        let ollama = msg.to_ollama();
+        let ollama = msg.to_ollama_message();
         assert_eq!(ollama.role, expected_ollama_role);
     }
 }

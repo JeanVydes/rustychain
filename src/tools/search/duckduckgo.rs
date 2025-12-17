@@ -14,10 +14,11 @@
 //! # Example
 //!
 //! ```no_run
-//! use your_crate::DuckDuckGoSearchTool;
+//! use rustychain::tools::search::DuckDuckGoSearchTool;
+//! use rustychain::tools::search::DuckDuckGoSearchArgs;
 //!
 //! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 //!     let tool = DuckDuckGoSearchTool::new();
 //!     
 //!     let args = DuckDuckGoSearchArgs {
@@ -83,46 +84,46 @@ impl DuckDuckGoSearchArgs {
         // Validate query
         let trimmed_query = self.query.trim();
         if trimmed_query.is_empty() {
-            return Err(Box::new(crate::CoreError::Search {
+            return Err(crate::Error::Search {
                 query: None,
                 source: None,
                 feedback: Some("Search query cannot be empty".to_string()),
-            }));
+            });
         }
         if trimmed_query.len() > 500 {
-            return Err(Box::new(crate::CoreError::Search {
+            return Err(crate::Error::Search {
                 query: None,
                 source: None,
                 feedback: Some("Search query cannot exceed 500 characters".to_string()),
-            }));
+            });
         }
 
         // Validate max_results
         if self.max_results < MIN_RESULTS_LIMIT {
-            return Err(Box::new(crate::CoreError::Search {
+            return Err(crate::Error::Search {
                 query: None,
                 source: None,
                 feedback: Some(format!(
                     "max_results must be at least {}",
                     MIN_RESULTS_LIMIT
                 )),
-            }));
+            });
         }
         if self.max_results > MAX_RESULTS_LIMIT {
-            return Err(Box::new(crate::CoreError::Search {
+            return Err(crate::Error::Search {
                 query: None,
                 source: None,
                 feedback: Some(format!("max_results cannot exceed {}", MAX_RESULTS_LIMIT)),
-            }));
+            });
         }
 
         // Validate region code format (basic check)
         if self.region.is_empty() || self.region.len() > 10 {
-            return Err(Box::new(crate::CoreError::Search {
+            return Err(crate::Error::Search {
                 query: None,
                 source: None,
                 feedback: Some("Region code must be 1-10 characters".to_string()),
-            }));
+            });
         }
 
         Ok(())
@@ -191,15 +192,21 @@ impl DuckDuckGoSearchTool {
         args.validate()?;
 
         let pred = |key: &DuckDuckGoSearchCached| -> Option<Vec<SearchResult>> {
-            if args == key.params {
+            // Solo cachear si la búsqueda es exacta y hay resultados
+            if args == key.params && !key.results.is_empty() {
                 return Some(key.results.clone());
             }
 
+            // Búsqueda parcial solo si hay resultados
             if key.params.query.contains(&args.query)
-                && key.params.max_results == args.max_results
+                && key.params.max_results >= args.max_results
                 && key.params.region == args.region
+                && !key.results.is_empty()
             {
-                return Some(key.results.clone());
+                // Limitar resultados al máximo solicitado
+                let limited_results: Vec<_> =
+                    key.results.iter().take(args.max_results).cloned().collect();
+                return Some(limited_results);
             }
 
             None
@@ -213,15 +220,21 @@ impl DuckDuckGoSearchTool {
                 .into_iter()
                 .flatten()
                 .collect::<Vec<_>>();
-            log::trace!("Returning cached results for query: {}", args.query);
 
-            let count = results.len();
-            return Ok(DuckDuckGoSearchResponse {
-                results,
-                query: args.query,
-                count,
-                from_cache: true,
-            });
+            if !results.is_empty() {
+                log::trace!(
+                    "Returning {} cached results for query: {}",
+                    results.len(),
+                    args.query
+                );
+                let count = results.len();
+                return Ok(DuckDuckGoSearchResponse {
+                    results,
+                    query: args.query,
+                    count,
+                    from_cache: true,
+                });
+            }
         }
 
         // Rate limiting
@@ -241,54 +254,54 @@ impl DuckDuckGoSearchTool {
         );
 
         // Fetch results
-        let response =
-            self.client
-                .get(&url)
-                .send()
-                .await
-                .map_err(|e| crate::CoreError::Search {
-                    query: Some(args.query.clone()),
-                    source: Some(Box::new(e)),
-                    feedback: Some("Failed to send request to DuckDuckGo".to_string()),
-                })?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| crate::Error::Search {
+                query: Some(args.query.clone()),
+                source: Some(Box::new(e)),
+                feedback: Some("Failed to send request to DuckDuckGo".to_string()),
+            })?;
 
         // Check for CAPTCHA or rate limiting
         let status = response.status();
         if status.as_u16() == 429 || status.as_u16() == 503 {
-            return Err(Box::new(crate::CoreError::Search {
+            return Err(crate::Error::Search {
                 query: Some(args.query),
                 source: None,
                 feedback: Some("Rate limited or CAPTCHA encountered from DuckDuckGo".to_string()),
-            }));
+            });
         }
 
         if !status.is_success() {
-            return Err(Box::new(crate::CoreError::Search {
+            return Err(crate::Error::Search {
                 query: Some(args.query),
                 source: None,
                 feedback: Some(format!("DuckDuckGo returned error status: {}", status)),
-            }));
+            });
         }
 
-        let html = response
-            .text()
-            .await
-            .map_err(|e| crate::CoreError::Search {
-                query: Some(args.query.clone()),
-                source: Some(Box::new(e)),
-                feedback: Some("Failed to read response text".to_string()),
-            })?;
+        let html = response.text().await.map_err(|e| crate::Error::Search {
+            query: Some(args.query.clone()),
+            source: Some(Box::new(e)),
+            feedback: Some("Failed to read response text".to_string()),
+        })?;
 
         // Parse results
         let results = self.parse_results(&html, args.max_results)?;
 
-        // Cache results
+        // SOLO cachear si hay resultados
         if args.use_cache && !results.is_empty() {
             let mut cache = self.cache.lock().await;
             cache.insert(DuckDuckGoSearchCached {
                 params: args.clone(),
                 results: results.clone(),
             });
+            log::trace!("Cached {} results for query: {}", results.len(), args.query);
+        } else if results.is_empty() {
+            log::warn!("No results found for query: {}", args.query);
         }
 
         Ok(DuckDuckGoSearchResponse {
@@ -321,13 +334,30 @@ impl DuckDuckGoSearchTool {
     fn parse_results(&self, html: &str, max_results: usize) -> crate::Result<Vec<SearchResult>> {
         let document = Html::parse_document(html);
 
-        // Select result containers
-        let result_selector =
-            Selector::parse("div.result").map_err(|_| crate::CoreError::Search {
-                query: None,
-                source: None,
-                feedback: Some("Failed to parse result selector".to_string()),
-            })?;
+        // Intentar múltiples selectores (DuckDuckGo puede cambiar su estructura)
+        let selectors = vec![
+            "div.result",
+            "div.results_links",
+            "div.web-result",
+            "article",
+        ];
+
+        let mut result_selector = None;
+        for selector_str in &selectors {
+            if let Ok(selector) = Selector::parse(selector_str)
+                && document.select(&selector).next().is_some()
+            {
+                result_selector = Some(selector);
+                log::trace!("Using selector: {}", selector_str);
+                break;
+            }
+        }
+
+        let result_selector = result_selector.ok_or_else(|| crate::Error::Search {
+            query: None,
+            source: None,
+            feedback: Some("Could not find any result containers in HTML".to_string()),
+        })?;
 
         let mut results = Vec::new();
         let mut seen_urls = std::collections::HashSet::new();
@@ -347,14 +377,33 @@ impl DuckDuckGoSearchTool {
         }
 
         log::trace!("Parsed {} unique results from DuckDuckGo", results.len());
+
+        if results.is_empty() {
+            log::trace!(
+                "No results parsed. HTML preview: {}",
+                &html[..html.len().min(500)]
+            );
+        }
+
         Ok(results)
     }
 
     /// Extracts a single search result from a result div
     fn extract_result(&self, result_div: ElementRef) -> Option<SearchResult> {
-        // Find the title link within this specific result div
-        let title_selector = Selector::parse("a.result__a").ok()?;
-        let title_link = result_div.select(&title_selector).next()?;
+        // Intentar múltiples selectores para el título
+        let title_selectors = vec!["a.result__a", "a.result__url", "h2 a", "a.result-link"];
+
+        let mut title_link = None;
+        for selector_str in &title_selectors {
+            if let Ok(selector) = Selector::parse(selector_str)
+                && let Some(link) = result_div.select(&selector).next()
+            {
+                title_link = Some(link);
+                break;
+            }
+        }
+
+        let title_link = title_link?;
 
         // Extract URL
         let href = title_link.value().attr("href")?;
@@ -369,19 +418,37 @@ impl DuckDuckGoSearchTool {
         let title = title.trim();
 
         if title.is_empty() {
+            log::trace!("Skipping result with empty title");
             return None;
         }
 
-        // Extract snippet from this specific result div
-        let snippet_selector = Selector::parse("a.result__snippet").ok()?;
-        let snippet = result_div
-            .select(&snippet_selector)
-            .next()
-            .map(|el| {
+        // Extract snippet
+        let snippet_selectors = vec![
+            "a.result__snippet",
+            "div.result__snippet",
+            "div.snippet",
+            "p.result-snippet",
+        ];
+
+        let mut snippet = None;
+        for selector_str in &snippet_selectors {
+            if let Ok(selector) = Selector::parse(selector_str)
+                && let Some(el) = result_div.select(&selector).next()
+            {
                 let text: String = el.text().collect::<Vec<_>>().join(" ");
-                text.trim().to_string()
-            })
-            .filter(|s| !s.is_empty());
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    snippet = Some(trimmed.to_string());
+                    break;
+                }
+            }
+        }
+
+        log::trace!(
+            "Extracted result: title='{}', url='{}'",
+            title,
+            sanitized_url
+        );
 
         Some(SearchResult {
             title: title.to_string(),
@@ -401,7 +468,10 @@ impl DuckDuckGoSearchTool {
 
             // URL decode
             match urlencoding::decode(encoded_url) {
-                Ok(decoded) => return Some(decoded.to_string()),
+                Ok(decoded) => {
+                    log::trace!("Decoded URL: {}", decoded);
+                    return Some(decoded.to_string());
+                }
                 Err(e) => {
                     log::trace!("Failed to decode URL '{}': {}", encoded_url, e);
                     return None;
@@ -414,11 +484,17 @@ impl DuckDuckGoSearchTool {
             return Some(href.to_string());
         }
 
+        // Handle protocol-relative URLs
+        if href.starts_with("//") {
+            return Some(format!("https:{}", href));
+        }
+
         // Reject internal DuckDuckGo links
-        if href.contains("duckduckgo.com") {
+        if href.contains("duckduckgo.com") && !href.contains("uddg=") {
             return None;
         }
 
+        log::trace!("Could not extract URL from: {}", href);
         None
     }
 

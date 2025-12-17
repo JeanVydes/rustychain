@@ -15,7 +15,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let llm = Arc::new(
         LLM::builder()
             .set_authorization(auth.clone())
-            .set_name("gemini-embedding-001".to_owned())
+            .set_model("gemini-embedding-001".to_owned())
             .set_provider(LLMProvider::Google)
             .build()?,
     );

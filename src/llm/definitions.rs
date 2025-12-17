@@ -13,14 +13,12 @@ use openai_api_rs::v1::{
 use schemars::Schema;
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
-use std::{error::Error, sync::Arc};
+use std::sync::Arc;
 use url::Url;
 
-use crate::{
-    CoreError,
-    llm::{
-        builder::LLMBuilder, conversation::Message, function::AnyFunction, inference::Inference,
-    },
+use crate::llm::{
+    builder::LLMBuilder, conversation::Inference, function::AnyFunction,
+    inference_task::InferenceTask,
 };
 
 /// Enum representing supported LLM providers.
@@ -177,7 +175,7 @@ impl PartialOrd<str> for ToolCallingMode {
 /// Struct representing a Large Language Model (LLM) with its configuration and capabilities.
 #[derive(Clone, Debug)]
 pub struct LLM {
-    pub name: String,
+    pub model: String,
     pub system_prompt: String,
     pub provider: LLMProvider,
     pub authorization: Option<String>,
@@ -273,7 +271,7 @@ impl GenerationConfig {
         match self.tool_calling_mode {
             ToolCallingMode::None => FunctionCallingMode::None,
             ToolCallingMode::Auto => FunctionCallingMode::Auto,
-            _ => FunctionCallingMode::Any,
+            _ => FunctionCallingMode::Auto,
         }
     }
 
@@ -301,36 +299,36 @@ impl Default for GenerationConfig {
             top_p: 0.9,
             top_k: 40,
             max_output_tokens: 2048,
-            thinking: ThinkingMode::None,
+            thinking: ThinkingMode::Dynamic,
             candidate_count: 1,
             stop_sequences: None,
             output_schema: None,
             response_mime_type: None,
-            tool_calling_mode: ToolCallingMode::None,
+            tool_calling_mode: ToolCallingMode::Auto,
         }
     }
 }
 
 #[async_trait::async_trait]
 pub trait LLMGeneration {
-    /// Performs text generation based on the provided history and message.
+    /// Performs text generation based on the provided history and inference.
     async fn generation(
         &self,
-        history: &[Message],
-        message: &Message,
+        history: &[Inference],
+        inference: &Inference,
         config: GenerationConfig,
-    ) -> crate::Result<Message>;
+    ) -> crate::Result<Inference>;
 }
 
 #[async_trait::async_trait]
 pub trait LLMStreaming {
-    /// Streams text generation results based on the provided history and message.
+    /// Streams text generation results based on the provided history and inference.
     async fn stream(
         &self,
-        history: &[Message],
-        message: &Message,
+        history: &[Inference],
+        inference: &Inference,
         config: GenerationConfig,
-    ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<Message>> + Send + 'static>>>;
+    ) -> crate::Result<Pin<Box<dyn Stream<Item = crate::Result<Inference>> + Send + 'static>>>;
 }
 
 #[async_trait::async_trait]
@@ -341,8 +339,8 @@ pub trait LLMEmbedding {
 
 impl LLM {
     /// Creates a new inference with this model.
-    pub fn inference(&self, message: Message) -> Inference {
-        Inference::new(message, Arc::new(self.clone()))
+    pub fn inference<'a>(&self, inference: Inference) -> InferenceTask<'a> {
+        InferenceTask::new(inference, Arc::new(self.clone()))
     }
 
     /// Creates a Gemini client configured for this LLM.
@@ -350,27 +348,17 @@ impl LLM {
     pub fn get_gemini_client(&self) -> crate::Result<Gemini> {
         let authorization = match &self.authorization {
             Some(a) => a,
-            None => return Err(Box::from(CoreError::Generic("Not auth".to_owned()))),
+            None => return Err(crate::Error::Unauthorized("Not auth".to_owned())),
         };
 
         let mut client =
-            GeminiBuilder::new(authorization.clone()).with_model(format!("models/{}", self.name));
+            GeminiBuilder::new(authorization.clone()).with_model(format!("models/{}", self.model));
 
         if let Some(endpoint) = &self.endpoint {
-            client = client.with_base_url(Url::parse(endpoint).map_err(
-                |err| -> Box<dyn Error + Send + Sync> {
-                    Box::from(CoreError::Generic(format!(
-                        "Invalid Gemini endpoint URL: {}",
-                        err
-                    )))
-                },
-            )?);
+            client = client.with_base_url(Url::parse(endpoint)?);
         }
 
-        let client = match client.build() {
-            Ok(c) => c,
-            Err(e) => return Err(Box::from(CoreError::Gemini(e))),
-        };
+        let client = client.build()?;
 
         Ok(client)
     }
@@ -380,7 +368,7 @@ impl LLM {
     pub fn get_openai_client(&self) -> crate::Result<OpenAIClient> {
         let authorization = match &self.authorization {
             Some(a) => a,
-            None => return Err(Box::from(CoreError::Generic("Not auth".to_owned()))),
+            None => return Err(crate::Error::Unauthorized("Not auth".to_owned())),
         };
 
         let mut client = OpenAIClientBuilder::new().with_api_key(authorization.clone());
@@ -389,11 +377,9 @@ impl LLM {
             client = client.with_endpoint(endpoint.clone());
         }
 
-        let client = client
-            .build()
-            .map_err(|err| -> Box<dyn Error + Send + Sync> {
-                Box::from(CoreError::OpenAI(format!("OpenAI client error: {}", err)))
-            })?;
+        let client = client.build().map_err(|e| {
+            crate::Error::Generic(format!("Failed to build OpenAI client: {}", e.to_string()))
+        })?;
 
         Ok(client)
     }
@@ -431,7 +417,7 @@ impl LLM {
     /// Creates a new LLM builder.
     pub fn builder() -> LLMBuilder {
         LLMBuilder {
-            name: None,
+            model: None,
             system_prompt: None,
             provider: None,
             authorization: None,
@@ -443,18 +429,18 @@ impl LLM {
     #[cfg(feature = "google")]
     pub fn new_google_request(
         &self,
-        history: &[Message],
-        message: &Message,
+        history: &[Inference],
+        inference: &Inference,
         config: GenerationConfig,
     ) -> crate::Result<ContentBuilder> {
         let client = self.get_gemini_client()?;
         let mut history: Vec<gemini_rust::Message> =
-            history.iter().map(|m| m.to_gemini()).collect();
-        history.push(message.to_gemini());
+            history.iter().map(|m| m.to_gemini_message()).collect();
+        history.push(inference.to_gemini_message());
         let mut req = client
             .generate_content()
             .with_system_instruction(self.system_prompt.clone())
-            .with_messages(history)
+            .with_messages(history.clone())
             .with_thinking_budget(config.thinking.to_google())
             .with_generation_config(GeminiGenerationConfig {
                 temperature: Some(config.temperature),
@@ -463,7 +449,7 @@ impl LLM {
                 max_output_tokens: Some(config.max_output_tokens),
                 thinking_config: Some(ThinkingConfig {
                     thinking_budget: Some(config.thinking.to_google()),
-                    ..Default::default()
+                    include_thoughts: Some(true),
                 }),
                 candidate_count: Some(config.candidate_count),
                 ..Default::default()
@@ -490,8 +476,8 @@ impl LLM {
     #[cfg(feature = "openai")]
     pub fn new_openai_request(
         &self,
-        history: &[Message],
-        message: &Message,
+        history: &[Inference],
+        inference: &Inference,
         config: GenerationConfig,
     ) -> crate::Result<ChatCompletionRequest> {
         // Build messages with system prompt first
@@ -507,10 +493,10 @@ impl LLM {
                 tool_call_id: None,
             });
         }
-        messages.extend(history.iter().map(|m| m.to_openai()));
-        messages.push(message.to_openai());
+        messages.extend(history.iter().map(|m| m.to_openai_message()));
+        messages.push(inference.to_openai_message());
 
-        let mut req = ChatCompletionRequest::new(self.name.clone(), messages)
+        let mut req = ChatCompletionRequest::new(self.model.clone(), messages)
             .max_tokens(config.max_output_tokens as i64)
             .temperature(config.temperature as f64)
             .top_p(config.top_p as f64)
@@ -541,8 +527,8 @@ impl LLM {
     #[cfg(feature = "openai")]
     pub fn new_openai_stream_request(
         &self,
-        history: &[Message],
-        message: &Message,
+        history: &[Inference],
+        inference: &Inference,
         config: GenerationConfig,
     ) -> crate::Result<ChatCompletionStreamRequest> {
         // Build messages with system prompt first
@@ -558,10 +544,10 @@ impl LLM {
                 tool_call_id: None,
             });
         }
-        messages.extend(history.iter().map(|m| m.to_openai()));
-        messages.push(message.to_openai());
+        messages.extend(history.iter().map(|m| m.to_openai_message()));
+        messages.push(inference.to_openai_message());
 
-        let mut req = ChatCompletionStreamRequest::new(self.name.clone(), messages)
+        let mut req = ChatCompletionStreamRequest::new(self.model.clone(), messages)
             .max_tokens(config.max_output_tokens as i64)
             .temperature(config.temperature as f64)
             .top_p(config.top_p as f64)
@@ -592,16 +578,17 @@ impl LLM {
     #[cfg(feature = "ollama")]
     pub fn new_ollama_request(
         &self,
-        history: &[Message],
-        message: &Message,
+        history: &[Inference],
+        inference: &Inference,
         config: GenerationConfig,
     ) -> crate::Result<ChatMessageRequest> {
         use ollama_rs::{generation::parameters::JsonStructure, models::ModelOptions};
 
-        let mut ollama_messages: Vec<ChatMessage> = history.iter().map(|m| m.to_ollama()).collect();
-        ollama_messages.push(message.to_ollama());
+        let mut ollama_messages: Vec<ChatMessage> =
+            history.iter().map(|m| m.to_ollama_message()).collect();
+        ollama_messages.push(inference.to_ollama_message());
 
-        let mut req = ChatMessageRequest::new(self.name.clone(), ollama_messages)
+        let mut req = ChatMessageRequest::new(self.model.clone(), ollama_messages)
             .think(config.thinking.to_ollama())
             .tools(
                 self.tools

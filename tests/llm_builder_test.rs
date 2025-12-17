@@ -8,13 +8,13 @@ use rustychain::llm::{LLM, LLMProvider};
 #[test]
 fn test_builder_with_all_required_fields() {
     let llm = LLM::builder()
-        .set_name("test-model".to_string())
+        .set_model("test-model".to_string())
         .set_provider(LLMProvider::Google)
         .build();
 
     assert!(llm.is_ok());
     let llm = llm.unwrap();
-    assert_eq!(llm.name, "test-model");
+    assert_eq!(llm.model, "test-model");
     assert_eq!(llm.provider, LLMProvider::Google);
     assert_eq!(llm.system_prompt, ""); // Default empty
     assert!(llm.authorization.is_none());
@@ -32,7 +32,7 @@ fn test_builder_missing_name_fails() {
 
 #[test]
 fn test_builder_missing_provider_fails() {
-    let result = LLM::builder().set_name("test-model".to_string()).build();
+    let result = LLM::builder().set_model("test-model".to_string()).build();
 
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -43,7 +43,7 @@ fn test_builder_missing_provider_fails() {
 fn test_builder_with_system_prompt() {
     let prompt = "You are a helpful assistant.";
     let llm = LLM::builder()
-        .set_name("test-model".to_string())
+        .set_model("test-model".to_string())
         .set_provider(LLMProvider::Ollama)
         .set_system_prompt(prompt.to_string())
         .build()
@@ -56,7 +56,7 @@ fn test_builder_with_system_prompt() {
 fn test_builder_with_authorization() {
     let auth = "sk-test-key-12345";
     let llm = LLM::builder()
-        .set_name("gemini-pro".to_string())
+        .set_model("gemini-pro".to_string())
         .set_provider(LLMProvider::Google)
         .set_authorization(auth.to_string())
         .build()
@@ -69,7 +69,7 @@ fn test_builder_with_authorization() {
 fn test_builder_chain_order_independent() {
     // Build with one order
     let llm1 = LLM::builder()
-        .set_name("model".to_string())
+        .set_model("model".to_string())
         .set_provider(LLMProvider::Google)
         .set_system_prompt("prompt".to_string())
         .set_authorization("auth".to_string())
@@ -81,11 +81,11 @@ fn test_builder_chain_order_independent() {
         .set_authorization("auth".to_string())
         .set_system_prompt("prompt".to_string())
         .set_provider(LLMProvider::Google)
-        .set_name("model".to_string())
+        .set_model("model".to_string())
         .build()
         .unwrap();
 
-    assert_eq!(llm1.name, llm2.name);
+    assert_eq!(llm1.model, llm2.model);
     assert_eq!(llm1.provider, llm2.provider);
     assert_eq!(llm1.system_prompt, llm2.system_prompt);
     assert_eq!(llm1.authorization, llm2.authorization);
@@ -94,7 +94,7 @@ fn test_builder_chain_order_independent() {
 #[test]
 fn test_builder_provider_google() {
     let llm = LLM::builder()
-        .set_name("gemini-2.5-flash".to_string())
+        .set_model("gemini-2.5-flash".to_string())
         .set_provider(LLMProvider::Google)
         .build()
         .unwrap();
@@ -105,7 +105,7 @@ fn test_builder_provider_google() {
 #[test]
 fn test_builder_provider_ollama() {
     let llm = LLM::builder()
-        .set_name("llama3".to_string())
+        .set_model("llama3".to_string())
         .set_provider(LLMProvider::Ollama)
         .build()
         .unwrap();

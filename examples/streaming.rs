@@ -1,5 +1,5 @@
 use futures_util::stream::StreamExt;
-use rustychain::{LLM, LLMProvider, Message};
+use rustychain::{Inference, LLM, LLMProvider};
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -12,20 +12,20 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let llm = LLM::builder()
         .set_authorization(auth)
-        .set_name("gpt-5.2-2025-12-11".to_owned())
+        .set_model("gpt-5.2-2025-12-11".to_owned())
         .set_provider(LLMProvider::OpenAI)
         .set_system_prompt("You are a helpful assistant.".to_owned())
         .build()?;
 
     let mut stream = llm
-        .inference(Message::user("Tell me a joke about computers."))
+        .inference(Inference::as_user("Tell me a joke about computers."))
         .stream()
         .await?;
 
     while let Some(chunk) = stream.next().await {
         match chunk {
             Ok(part) => {
-                if let Some(text) = part.message {
+                if let Some(text) = part.content.text {
                     log::info!("{}", text);
                 }
             }

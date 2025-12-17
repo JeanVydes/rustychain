@@ -1,4 +1,4 @@
-use crate::{LLM, Message, agent::definitions::Agent};
+use crate::{LLM, Inference, agent::definitions::Agent};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -6,8 +6,11 @@ pub struct AgentBuilder {
     pub name: Option<String>,
     pub description: Option<String>,
     pub llm: Arc<LLM>,
-    pub history: Option<Arc<Mutex<Vec<Message>>>>,
+    pub history: Option<Arc<Mutex<Vec<Inference>>>>,
     pub max_depth: i32,
+    pub generation_config: Option<crate::llm::GenerationConfig>,
+    pub output_schema: Option<schemars::Schema>,
+    pub initial: Option<Inference>,
 }
 
 impl AgentBuilder {
@@ -18,6 +21,9 @@ impl AgentBuilder {
             llm,
             history: None,
             max_depth: 5,
+            initial: None,
+            generation_config: None,
+            output_schema: None,
         }
     }
 
@@ -31,12 +37,22 @@ impl AgentBuilder {
         self
     }
 
-    pub fn history(mut self, history: Arc<Mutex<Vec<Message>>>) -> Self {
+    pub fn history(mut self, history: Arc<Mutex<Vec<Inference>>>) -> Self {
         self.history = Some(history);
         self
     }
     pub fn max_depth(mut self, depth: i32) -> Self {
         self.max_depth = depth;
+        self
+    }
+
+    pub fn initial(mut self, inference: Inference) -> Self {
+        self.initial = Some(inference);
+        self
+    }
+
+    pub fn generation_config(mut self, config: crate::llm::GenerationConfig) -> Self {
+        self.generation_config = Some(config);
         self
     }
 
@@ -47,6 +63,8 @@ impl AgentBuilder {
             llm: self.llm,
             history: self.history.unwrap_or_else(|| Arc::new(Mutex::new(vec![]))),
             max_depth: self.max_depth,
+            current: self.initial,
+            generation_config: self.generation_config,
         }
     }
 }

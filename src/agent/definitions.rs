@@ -1,13 +1,15 @@
-use crate::{CoreError, FunctionResult, LLM, Message, Role, agent::builder::AgentBuilder};
+use crate::{
+    Error, FinishReason, FunctionResult, GenerationConfig, Inference, LLM, Role,
+    agent::builder::AgentBuilder,
+};
 use futures_util::future::join_all;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 #[derive(Debug)]
 pub enum AgentStep {
-    Finished(Message),
-    ToolExecution(Message),
-    ToolReturn(Message),
+    Finished(Inference),
+    ToolReturn(Inference),
 }
 
 #[derive(Debug, Clone)]
@@ -15,8 +17,10 @@ pub struct Agent {
     pub name: Option<String>,
     pub description: Option<String>,
     pub llm: Arc<LLM>,
-    pub history: Arc<Mutex<Vec<Message>>>,
+    pub history: Arc<Mutex<Vec<Inference>>>,
     pub max_depth: i32,
+    pub generation_config: Option<GenerationConfig>,
+    pub current: Option<Inference>,
 }
 
 impl Agent {
@@ -24,43 +28,73 @@ impl Agent {
         AgentBuilder::new(llm)
     }
 
-    pub async fn run(&self, initial_message: Message) -> crate::Result<Message> {
-        let mut current_msg = initial_message;
+    pub async fn run(&self, initial: Inference) -> crate::Result<Inference> {
+        let mut current = initial;
 
         for _ in 0..self.max_depth {
-            match self.step(current_msg.clone()).await? {
+            match self.step(current.clone()).await? {
                 AgentStep::Finished(response) => return Ok(response),
-                AgentStep::ToolExecution(tool_msg) => {
-                    current_msg = tool_msg;
-                }
-                AgentStep::ToolReturn(result_msg) => {
-                    current_msg = result_msg;
+                AgentStep::ToolReturn(result_inference) => {
+                    current = result_inference;
                 }
             }
         }
 
-        Err(Box::from(CoreError::MaxDepthReached))
+        Err(crate::Error::MaxDepthReached)
     }
 
-    pub async fn step(&self, message: Message) -> crate::Result<AgentStep> {
+    pub async fn next(&mut self) -> Option<crate::Result<AgentStep>> {
+        let inference = self.current.take()?;
+        let step = match self.step(inference).await {
+            Ok(s) => s,
+            Err(e) => return Some(Err(e)),
+        };
+
+        self.current = match &step {
+            AgentStep::Finished(_) => None,
+            AgentStep::ToolReturn(inf) => Some(inf.clone()),
+        };
+
+        Some(Ok(step))
+    }
+
+    pub async fn step(&self, inference: Inference) -> crate::Result<AgentStep> {
         let history_context = {
             let mut history = self.history.lock().await;
-            if message.role != Role::Tool {
-                history.push(message.clone());
+            if inference.content.role != Role::Tool {
+                history.push(inference.clone());
             }
             history.clone()
         };
 
-        let response = self
-            .llm
-            .inference(message)
-            .with_history(history_context)
-            .generate()
-            .await?;
+        let mut req = self.llm.inference(inference).with_history(&history_context);
 
+        if let Some(config) = &self.generation_config {
+            req = req.with_config(config.clone());
+        }
+
+        let response = req.generate().await?;
         {
             let mut history = self.history.lock().await;
             history.push(response.clone());
+        }
+
+        if let Some(reason) = &response.finish_reason {
+            match reason {
+                FinishReason::UnexpectedToolCall => {
+                    return Ok(AgentStep::ToolReturn(Inference::with_content(
+                        Role::User,
+                        "LLM attempted to call a tool unexpectedly.".to_owned(),
+                    )));
+                }
+                FinishReason::TooManyToolCalls => {
+                    log::debug!("LLM made too many tool calls in a single response.");
+                }
+                FinishReason::MaxTokens => {
+                    log::debug!("LLM response exceeded maximum token limit.");
+                }
+                _ => { /* No action needed for other finish reasons */ }
+            }
         }
 
         if !response.has_function_calls() {
@@ -76,7 +110,7 @@ impl Agent {
                 tokio::spawn(async move {
                     let tool = match llm.get_tool(&call.name) {
                         Some(t) => t,
-                        None => return Err(CoreError::NotFound(call.name.clone())),
+                        None => return Err(Error::NotFound(call.name.clone())),
                     };
 
                     let result = tool.execute(&call.arguments).await;
@@ -86,7 +120,7 @@ impl Agent {
                             name: call.name.clone(),
                             results: val,
                         }),
-                        Err(e) => Err(crate::CoreError::Internal(e)),
+                        Err(e) => Err(crate::Error::Internal(e.into())),
                     }
                 }),
             ));
@@ -118,7 +152,7 @@ impl Agent {
             }
         }
 
-        let tool_msg = Message::function_results(tool_results);
+        let tool_msg = Inference::with_function_results(tool_results);
         {
             let mut history = self.history.lock().await;
             history.push(tool_msg.clone());

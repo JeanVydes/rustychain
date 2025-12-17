@@ -66,7 +66,7 @@ where
                     // Downcast input from Arc<dyn Any> to the expected input type O.
                     // This is guaranteed to succeed at runtime because the compile-time
                     // Type State (R: Runnable<O, O2>) enforced that the previous step produced O.
-                    let typed_input = input.downcast::<O>().map_err(crate::CoreError::Downcast)?;
+                    let typed_input = input.downcast::<O>().map_err(crate::Error::Downcast)?;
 
                     let t = typed_input.clone();
                     // Call the runnable with the downcasted input (O)
@@ -99,7 +99,7 @@ where
     /// Executes the next step in the chain
     pub async fn next(&mut self) -> Option<crate::Result<StepResult>> {
         if self.current_index >= self.steps.len() {
-            log::debug!("No more steps to execute in the chain.");
+            log::trace!("No more steps to execute in the chain.");
             return None;
         }
 
@@ -191,10 +191,10 @@ where
             let current = self
                 .current_value
                 .take()
-                .ok_or_else(|| crate::CoreError::StepError {
+                .ok_or_else(|| crate::Error::StepError {
                     index,
                     step_name: Some(name.clone()),
-                    source: Box::new(crate::CoreError::NotInput),
+                    source: Box::new(crate::Error::NotInput),
                 })?;
 
             log::trace!("({}/{}) Step input prepared.", index + 1, self.steps.len());
@@ -240,10 +240,10 @@ where
             let current = self
                 .current_value
                 .take()
-                .ok_or_else(|| crate::CoreError::StepError {
+                .ok_or_else(|| crate::Error::StepError {
                     index,
                     step_name: Some(name.clone()),
-                    source: Box::new(crate::CoreError::NotInput),
+                    source: Box::new(crate::Error::NotInput),
                 })?;
 
             log::trace!(
@@ -290,24 +290,22 @@ where
         log::trace!("Finalizing the chain.");
 
         if self.current_index != self.steps.len() {
-            return Err(Box::from(crate::CoreError::ChainNotFinalized));
+            return Err(crate::Error::ChainNotFinalized);
         }
 
-        let final_value = self
-            .current_value
-            .ok_or_else(|| crate::CoreError::StepError {
+        let final_value = self.current_value.ok_or_else(|| crate::Error::StepError {
+            index: self.current_index,
+            step_name: None,
+            source: Box::new(crate::Error::StepError {
                 index: self.current_index,
                 step_name: None,
-                source: Box::new(crate::CoreError::StepError {
-                    index: self.current_index,
-                    step_name: None,
-                    source: Box::new(crate::CoreError::NotInput),
-                }),
-            })?;
+                source: Box::new(crate::Error::NotInput),
+            }),
+        })?;
 
         let output = final_value
             .downcast::<O>()
-            .map_err(crate::CoreError::Downcast)?;
+            .map_err(crate::Error::Downcast)?;
 
         Ok(output)
     }

@@ -5,64 +5,34 @@
 
 use rustychain::ToolCallingMode;
 use rustychain::llm::{
-    FunctionCall, FunctionResult, GenerationConfig, LLM, LLMProvider, Message, Role, ThinkingMode,
+    FunctionCall, FunctionResult, GenerationConfig, Inference, LLM, LLMProvider, Role, ThinkingMode,
 };
 
 // ============================================================================
 // Helper to create messages
 // ============================================================================
 
-fn user_message(text: &str) -> Message {
-    Message {
-        role: Role::User,
-        message: Some(text.to_string()),
-        audio: None,
-        images: None,
-        thinking: None,
-        function_calls: vec![],
-        function_results: vec![],
-    }
+fn user_message(text: &str) -> Inference {
+    Inference::as_user(text)
 }
 
-fn assistant_message(text: &str) -> Message {
-    Message {
-        role: Role::Assistant,
-        message: Some(text.to_string()),
-        audio: None,
-        images: None,
-        thinking: None,
-        function_calls: vec![],
-        function_results: vec![],
-    }
+fn assistant_message(text: &str) -> Inference {
+    let mut inf = Inference::as_assistant(text);
+    inf.finish_reason = Some(rustychain::FinishReason::Stop);
+    inf
 }
 
-fn system_message(text: &str) -> Message {
-    Message {
-        role: Role::System,
-        message: Some(text.to_string()),
-        audio: None,
-        images: None,
-        thinking: None,
-        function_calls: vec![],
-        function_results: vec![],
-    }
+fn system_message(text: &str) -> Inference {
+    Inference::as_system(text)
 }
 
-fn tool_message(results: Vec<FunctionResult>) -> Message {
-    Message {
-        role: Role::Tool,
-        message: None,
-        audio: None,
-        images: None,
-        thinking: None,
-        function_calls: vec![],
-        function_results: results,
-    }
+fn tool_message(results: Vec<FunctionResult>) -> Inference {
+    Inference::with_function_results(results)
 }
 
 fn dummy_llm() -> LLM {
     LLM {
-        name: "test-model".to_string(),
+        model: "test-model".to_string(),
         system_prompt: "".to_string(),
         provider: LLMProvider::OpenAI,
         authorization: None,
@@ -81,8 +51,8 @@ fn test_inference_new_creates_empty() {
     let inf = llm.inference(user_message(""));
 
     assert!(inf.history.is_empty());
-    assert_eq!(inf.message.role, Role::User);
-    assert!(inf.output_schema.is_none());
+    assert_eq!(inf.inference.content.role, Role::User);
+    assert!(inf.config.output_schema.is_none());
 }
 
 #[test]
@@ -90,8 +60,8 @@ fn test_inference_with_message() {
     let llm = dummy_llm();
     let inf = llm.inference(user_message("Hello"));
 
-    assert_eq!(inf.message.role, Role::User);
-    assert_eq!(inf.message.message.as_ref().unwrap(), "Hello");
+    assert_eq!(inf.inference.content.role, Role::User);
+    assert_eq!(inf.inference.content.text.as_ref().unwrap(), "Hello");
 }
 
 #[test]
@@ -103,12 +73,12 @@ fn test_inference_with_history() {
     ];
 
     let llm = dummy_llm();
-    let inf = llm.inference(user_message("")).with_history(history);
+    let inf = llm.inference(user_message("")).with_history(&history);
 
     assert_eq!(inf.history.len(), 3);
-    assert_eq!(inf.history[0].role, Role::System);
-    assert_eq!(inf.history[1].role, Role::User);
-    assert_eq!(inf.history[2].role, Role::Assistant);
+    assert_eq!(inf.history[0].content.role, Role::System);
+    assert_eq!(inf.history[1].content.role, Role::User);
+    assert_eq!(inf.history[2].content.role, Role::Assistant);
 }
 
 #[test]
@@ -142,18 +112,18 @@ fn test_inference_with_audio() {
 
     let inf = llm.inference(msg);
 
-    assert!(inf.message.audio.is_some());
-    assert_eq!(inf.message.audio.as_ref().unwrap().len(), 1024);
+    assert!(inf.inference.content.audio.is_some());
+    assert_eq!(inf.inference.content.audio.as_ref().unwrap().len(), 1024);
 }
 
 #[test]
 fn test_inference_chained_building() {
     let msg = user_message("Explain Rust").with_audio(vec![1, 2, 3]);
     let llm = dummy_llm();
-
+    let history = vec![system_message("Be concise")];
     let inf = llm
         .inference(msg)
-        .with_history(vec![system_message("Be concise")])
+        .with_history(&history)
         .with_config(GenerationConfig {
             temperature: 0.5,
             top_p: 0.9,
@@ -168,8 +138,8 @@ fn test_inference_chained_building() {
         });
 
     assert_eq!(inf.history.len(), 1);
-    assert_eq!(inf.message.role, Role::User);
-    assert!(inf.message.audio.is_some());
+    assert_eq!(inf.inference.content.role, Role::User);
+    assert!(inf.inference.content.audio.is_some());
 }
 
 // ============================================================================
@@ -246,7 +216,7 @@ fn test_inference_with_function_result() {
     let llm = dummy_llm();
     let inf = llm.inference(msg);
 
-    assert_eq!(inf.message.role, Role::Tool);
+    assert_eq!(inf.inference.content.role, Role::Tool);
 }
 
 // ============================================================================
@@ -259,11 +229,12 @@ fn test_inference_builder_is_consuming() {
     let inf1 = llm.inference(user_message("Initial"));
 
     // Each call consumes and returns new inference
-    let inf2 = inf1.with_history(vec![user_message("Hello")]);
+    let history = vec![user_message("Hello")];
+    let inf2 = inf1.with_history(&history);
 
     // inf2 should have history and keep the original message
     assert_eq!(inf2.history.len(), 1);
-    assert_eq!(inf2.message.role, Role::User);
+    assert_eq!(inf2.inference.content.role, Role::User);
 }
 
 // ============================================================================
@@ -313,13 +284,13 @@ fn test_inference_preserves_history_order() {
     ];
 
     let llm = dummy_llm();
-    let inf = llm.inference(user_message("")).with_history(history);
+    let inf = llm.inference(user_message("")).with_history(&history);
 
-    assert_eq!(inf.history[0].role, Role::System);
-    assert_eq!(inf.history[1].role, Role::User);
-    assert_eq!(inf.history[2].role, Role::Assistant);
-    assert_eq!(inf.history[3].role, Role::User);
-    assert_eq!(inf.history[4].role, Role::Assistant);
+    assert_eq!(inf.history[0].content.role, Role::System);
+    assert_eq!(inf.history[1].content.role, Role::User);
+    assert_eq!(inf.history[2].content.role, Role::Assistant);
+    assert_eq!(inf.history[3].content.role, Role::User);
+    assert_eq!(inf.history[4].content.role, Role::Assistant);
 }
 
 // ============================================================================
@@ -339,15 +310,10 @@ fn test_inference_complex_conversation() {
     };
 
     // Message with function call
-    let msg_with_call = Message {
-        role: Role::Assistant,
-        message: None,
-        audio: None,
-        images: None,
-        thinking: None,
-        function_calls: vec![call],
-        function_results: vec![],
-    };
+    let mut msg_with_call = Inference::as_assistant("");
+    msg_with_call.content.text = None;
+    msg_with_call = msg_with_call.add_function_call(call);
+    msg_with_call.finish_reason = Some(rustychain::FinishReason::ToolCall);
 
     let history = vec![
         system_message("You are a search assistant"),
@@ -359,16 +325,16 @@ fn test_inference_complex_conversation() {
     let llm = dummy_llm();
     let inf = llm
         .inference(assistant_message("I found tokio and async-std"))
-        .with_history(history);
+        .with_history(&history);
 
     assert_eq!(inf.history.len(), 4);
-    assert_eq!(inf.message.role, Role::Assistant);
+    assert_eq!(inf.inference.content.role, Role::Assistant);
 
     // Verify roles in history
-    assert_eq!(inf.history[0].role, Role::System);
-    assert_eq!(inf.history[1].role, Role::User);
-    assert_eq!(inf.history[2].role, Role::Assistant);
-    assert_eq!(inf.history[3].role, Role::Tool);
+    assert_eq!(inf.history[0].content.role, Role::System);
+    assert_eq!(inf.history[1].content.role, Role::User);
+    assert_eq!(inf.history[2].content.role, Role::Assistant);
+    assert_eq!(inf.history[3].content.role, Role::Tool);
 }
 
 // ============================================================================
@@ -398,7 +364,7 @@ fn test_inference_building_is_idempotent() {
     for _ in 0..100 {
         let inf = llm.inference(msg.clone()).with_config(config.clone());
 
-        results.push((inf.message.role.clone(), inf.config.temperature));
+        results.push((inf.inference.content.role.clone(), inf.config.temperature));
     }
 
     // All results should be identical

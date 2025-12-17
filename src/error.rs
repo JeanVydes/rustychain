@@ -10,13 +10,13 @@ use std::{any::Any, error::Error as StdError, sync::Arc};
 use thiserror::Error;
 
 /// A specialized Result type for the RustyChain core module.
-pub type Result<T> = std::result::Result<T, Box<dyn StdError + Send + Sync>>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Core errors for RustyChain
 /// These errors cover various failure scenarios in the core functionality,
 /// including interactions with LLM providers, serialization issues, and chain execution errors.
 #[derive(Debug, Error)]
-pub enum CoreError {
+pub enum Error {
     /// Generic error with a message
     #[error("{0}")]
     Generic(String),
@@ -34,7 +34,7 @@ pub enum CoreError {
 
     /// OpenAI provider errors
     #[error("OpenAI Error: {0}")]
-    OpenAI(String),
+    OpenAI(#[from] openai_api_rs::v1::error::APIError),
 
     // OTHER ERRORS
     /// Serialization errors
@@ -81,15 +81,30 @@ pub enum CoreError {
 
     /// IO errors
     #[error("IO Error: {0}")]
-    IO(#[from] std::io::Error),
+    IO(Box<dyn StdError + Send + Sync>),
+
+    #[error("Invalid Input: {0}")]
+    Input(String),
 
     /// Unsupported operation errors
     #[error("Unsupported: {0}")]
     Unsupported(String),
 
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
+
     /// Downcast errors
     #[error("Downcast Error")]
     Downcast(Arc<dyn Any + Send + Sync>),
+
+    #[error("Tokio Join Error: {0}")]
+    TokioJoin(#[from] tokio::task::JoinError),
+
+    #[error("Tool Error: {source}")]
+    ToolError {
+        #[source]
+        source: Box<dyn StdError + Send + Sync>,
+    },
 
     /// Rate limit errors
     #[error("Rate limit exceeded. Retry after {retry_after_secs} seconds")]
@@ -104,9 +119,12 @@ pub enum CoreError {
         source: Box<dyn StdError + Send + Sync>,
     },
 
-    /// Initial input to the chain was not set
-    #[error("Chain initial input not set")]
+    /// Initial input was not set
+    #[error("Initial input not set")]
     NotInput,
+
+    #[error("Chain input validation failed: {message}")]
+    Validation { message: String },
 
     /// Chain has not been finalized yet
     #[error("Chain has not been finalized yet")]
@@ -123,8 +141,8 @@ pub enum CoreError {
     NotFunctionResults,
 }
 
-/// CoreError utility methods
-impl CoreError {
+/// utility methods
+impl Error {
     /// Check if an error is a rate limit error (HTTP 429)
     pub fn is_rate_limit(error: &(dyn StdError + Send + Sync)) -> bool {
         let error_str = error.to_string();
@@ -163,5 +181,31 @@ impl CoreError {
         }
 
         None
+    }
+
+    pub fn from_boxed(err: Box<dyn StdError + Send + Sync + 'static>) -> Self {
+        match err.downcast::<Error>() {
+            Ok(inner) => *inner,
+            Err(err) => Error::Internal(err),
+        }
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Self {
+        Error::IO(Box::new(err))
+    }
+}
+
+impl From<base64::DecodeError> for Error {
+    fn from(err: base64::DecodeError) -> Self {
+        Error::Generic(format!("Base64 Decode Error: {}", err))
+    }
+}
+
+
+impl <'a> From<scraper::error::SelectorErrorKind<'a>> for Error {
+    fn from(err: scraper::error::SelectorErrorKind<'a>) -> Self {
+        Error::Scraper(format!("Selector Error: {}", err))
     }
 }

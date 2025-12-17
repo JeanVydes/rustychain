@@ -85,7 +85,7 @@ pretty_assertions = "1.4"
 rand = "0.9.2"
 criterion = { version = "0.8.1", features = ["async_tokio"] }
 tracing = "0.1.43"
-tracing-subscriber = "0.3.22"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter", "fmt"] }
 dotenvy = "0.15.6"
 mockito = "1.2.0"
 

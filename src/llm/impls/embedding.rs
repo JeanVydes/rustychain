@@ -1,4 +1,4 @@
-use crate::{CoreError, LLM, LLMEmbedding, LLMProvider};
+use crate::{LLM, LLMEmbedding, LLMProvider};
 
 #[async_trait::async_trait]
 impl LLMEmbedding for LLM {
@@ -20,38 +20,27 @@ impl LLMEmbedding for LLM {
             }
             #[cfg(feature = "openai")]
             LLMProvider::OpenAI => {
-                use std::error::Error;
-
                 let mut client = self.get_openai_client()?;
 
                 let mut req = openai_api_rs::v1::embedding::EmbeddingRequest::new(
-                    self.name.clone(),
+                    self.model.clone(),
                     vec![text.to_owned()],
                 );
                 req.dimensions = Some(dim);
 
-                let res =
-                    client
-                        .embedding(req)
-                        .await
-                        .map_err(|e| -> Box<dyn Error + Send + Sync> {
-                            Box::from(CoreError::OpenAI(format!(
-                                "OpenAI embedding request failed: {:?}",
-                                e
-                            )))
-                        })?;
+                let res = client.embedding(req).await?;
 
                 if let Some(data) = res.data.first() {
                     Ok(data.embedding.clone())
                 } else {
-                    Err(Box::from(CoreError::Generic(
+                    Err(crate::Error::Generic(
                         "No embedding data returned from OpenAI".to_owned(),
-                    )))
+                    ))
                 }
             }
-            _ => Err(Box::from(CoreError::Unsupported(
+            _ => Err(crate::Error::Unsupported(
                 "Embedding not supported for this provider".to_owned(),
-            ))),
+            )),
         }
     }
 }

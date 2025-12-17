@@ -12,8 +12,6 @@ use schemars::{JsonSchema, Schema};
 use serde::{Deserialize, Serialize, de};
 use serde_json::Value;
 
-use crate::CoreError;
-
 // Experimental, this needs more work
 /// Converts a schemars-generated JSON schema Value to OpenAI's FunctionParameters
 fn schema_to_openai_parameters(schema: &Value) -> OpenAIFunctionParameters {
@@ -228,12 +226,7 @@ where
     }
 
     async fn execute(&self, args: &serde_json::Value) -> crate::Result<serde_json::Value> {
-        let concrete_args: A = serde_json::from_value(args.clone()).map_err(|e| {
-            Box::new(CoreError::Generic(format!(
-                "Failed to deserialize arguments for function '{}' : {}",
-                self.name, e
-            ))) as Box<dyn std::error::Error + Send + Sync>
-        })?;
+        let concrete_args: A = serde_json::from_value(args.clone())?;
 
         let result = self.executor.call(concrete_args).await?;
         Ok(serde_json::to_value(result)?)

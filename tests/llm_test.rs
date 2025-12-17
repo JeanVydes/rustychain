@@ -5,8 +5,8 @@
 use rustychain::{
     ToolCallingMode,
     llm::{
-        FnDeclarator, FnExecutor, FunctionDeclaration, GenerationConfig, LLM, LLMProvider, Message,
-        Role, ThinkingMode, ToolArgs,
+        FnDeclarator, FnExecutor, FunctionDeclaration, GenerationConfig, Inference, LLM,
+        LLMProvider, Role, ThinkingMode, ToolArgs,
     },
 };
 use schemars::JsonSchema;
@@ -17,16 +17,8 @@ use std::sync::Arc;
 // Helper to create messages
 // ============================================================================
 
-fn user_message(text: &str) -> Message {
-    Message {
-        role: Role::User,
-        message: Some(text.to_string()),
-        audio: None,
-        images: None,
-        thinking: None,
-        function_calls: vec![],
-        function_results: vec![],
-    }
+fn user_message(text: &str) -> Inference {
+    Inference::as_user(text)
 }
 
 // ============================================================================
@@ -102,13 +94,13 @@ fn test_llm_provider_clone() {
 #[test]
 fn test_llm_builder_minimal() {
     let result = LLM::builder()
-        .set_name("test-model".to_owned())
+        .set_model("test-model".to_owned())
         .set_provider(LLMProvider::Google)
         .build();
 
     assert!(result.is_ok());
     let llm = result.unwrap();
-    assert_eq!(llm.name, "test-model");
+    assert_eq!(llm.model, "test-model");
 }
 
 #[test]
@@ -117,7 +109,7 @@ fn test_llm_builder_with_all_options() {
     let tool_decl = FnDeclarator::<TestToolArgs, _>::declare(&tool);
 
     let result = LLM::builder()
-        .set_name("gemini-pro".to_owned())
+        .set_model("gemini-pro".to_owned())
         .set_provider(LLMProvider::Google)
         .set_authorization("test-api-key".to_owned())
         .set_system_prompt("You are a helpful assistant".to_owned())
@@ -126,7 +118,7 @@ fn test_llm_builder_with_all_options() {
 
     assert!(result.is_ok());
     let llm = result.unwrap();
-    assert_eq!(llm.name, "gemini-pro");
+    assert_eq!(llm.model, "gemini-pro");
     assert!(llm.authorization.is_some());
     assert!(!llm.system_prompt.is_empty());
     assert_eq!(llm.tools.len(), 1);
@@ -141,7 +133,7 @@ fn test_llm_builder_missing_name_fails() {
 
 #[test]
 fn test_llm_builder_missing_provider_fails() {
-    let result = LLM::builder().set_name("test".to_owned()).build();
+    let result = LLM::builder().set_model("test".to_owned()).build();
 
     assert!(result.is_err());
 }
@@ -153,18 +145,18 @@ fn test_llm_builder_missing_provider_fails() {
 #[test]
 fn test_llm_has_correct_name() {
     let llm = LLM::builder()
-        .set_name("gemini-2.0-flash".to_owned())
+        .set_model("gemini-2.0-flash".to_owned())
         .set_provider(LLMProvider::Google)
         .build()
         .unwrap();
 
-    assert_eq!(llm.name, "gemini-2.0-flash");
+    assert_eq!(llm.model, "gemini-2.0-flash");
 }
 
 #[test]
 fn test_llm_has_system_prompt() {
     let llm = LLM::builder()
-        .set_name("test".to_owned())
+        .set_model("test".to_owned())
         .set_provider(LLMProvider::Google)
         .set_system_prompt("Be concise".to_owned())
         .build()
@@ -176,7 +168,7 @@ fn test_llm_has_system_prompt() {
 #[test]
 fn test_llm_has_authorization() {
     let llm = LLM::builder()
-        .set_name("test".to_owned())
+        .set_model("test".to_owned())
         .set_provider(LLMProvider::Google)
         .set_authorization("secret-key".to_owned())
         .build()
@@ -191,7 +183,7 @@ fn test_llm_has_multiple_tools() {
     let tool2 = Arc::new(FnDeclarator::<TestToolArgs, _>::declare(&TestTool));
 
     let llm = LLM::builder()
-        .set_name("test".to_owned())
+        .set_model("test".to_owned())
         .set_provider(LLMProvider::Google)
         .add_tool(tool1)
         .add_tool(tool2)
@@ -208,7 +200,7 @@ fn test_llm_has_multiple_tools() {
 #[test]
 fn test_llm_google_provider() {
     let llm = LLM::builder()
-        .set_name("gemini-pro".to_owned())
+        .set_model("gemini-pro".to_owned())
         .set_provider(LLMProvider::Google)
         .build()
         .unwrap();
@@ -219,7 +211,7 @@ fn test_llm_google_provider() {
 #[test]
 fn test_llm_ollama_provider() {
     let llm = LLM::builder()
-        .set_name("llama3".to_owned())
+        .set_model("llama3".to_owned())
         .set_provider(LLMProvider::Ollama)
         .build()
         .unwrap();
@@ -234,12 +226,12 @@ fn test_llm_ollama_provider() {
 #[test]
 fn test_inference_creation_for_llm() {
     let _llm = LLM::builder()
-        .set_name("test".to_owned())
+        .set_model("test".to_owned())
         .set_provider(LLMProvider::Google)
         .build()
         .unwrap();
     let llm = LLM::builder()
-        .set_name("test".to_owned())
+        .set_model("test".to_owned())
         .set_provider(LLMProvider::Google)
         .build()
         .unwrap();
@@ -260,7 +252,7 @@ fn test_inference_creation_for_llm() {
         });
 
     // Inference should be compatible with any LLM
-    assert_eq!(inference.message.role, Role::User);
+    assert_eq!(inference.inference.content.role, Role::User);
     assert_eq!(inference.config.temperature, 0.7);
 }
 
@@ -273,7 +265,7 @@ fn test_llm_tools_are_accessible() {
     let tool = Arc::new(FnDeclarator::<TestToolArgs, _>::declare(&TestTool));
 
     let llm = LLM::builder()
-        .set_name("test".to_owned())
+        .set_model("test".to_owned())
         .set_provider(LLMProvider::Google)
         .add_tool(tool)
         .build()
@@ -289,7 +281,7 @@ async fn test_llm_tool_execution() {
     let tool = Arc::new(FnDeclarator::<TestToolArgs, _>::declare(&TestTool));
 
     let llm = LLM::builder()
-        .set_name("test".to_owned())
+        .set_model("test".to_owned())
         .set_provider(LLMProvider::Google)
         .add_tool(tool)
         .build()
@@ -309,37 +301,37 @@ async fn test_llm_tool_execution() {
 #[test]
 fn test_llm_different_names_are_different() {
     let llm1 = LLM::builder()
-        .set_name("model-a".to_owned())
+        .set_model("model-a".to_owned())
         .set_provider(LLMProvider::Google)
         .build()
         .unwrap();
 
     let llm2 = LLM::builder()
-        .set_name("model-b".to_owned())
+        .set_model("model-b".to_owned())
         .set_provider(LLMProvider::Google)
         .build()
         .unwrap();
 
-    assert_ne!(llm1.name, llm2.name);
+    assert_ne!(llm1.model, llm2.model);
 }
 
 #[test]
 fn test_llm_same_config_same_name() {
     let llm1 = LLM::builder()
-        .set_name("test".to_owned())
+        .set_model("test".to_owned())
         .set_provider(LLMProvider::Google)
         .set_system_prompt("Be helpful".to_owned())
         .build()
         .unwrap();
 
     let llm2 = LLM::builder()
-        .set_name("test".to_owned())
+        .set_model("test".to_owned())
         .set_provider(LLMProvider::Google)
         .set_system_prompt("Be helpful".to_owned())
         .build()
         .unwrap();
 
-    assert_eq!(llm1.name, llm2.name);
+    assert_eq!(llm1.model, llm2.model);
     assert_eq!(llm1.system_prompt, llm2.system_prompt);
 }
 
@@ -350,7 +342,7 @@ fn test_llm_same_config_same_name() {
 #[test]
 fn test_llm_debug_output() {
     let llm = LLM::builder()
-        .set_name("gemini-pro".to_owned())
+        .set_model("gemini-pro".to_owned())
         .set_provider(LLMProvider::Google)
         .set_authorization("secret".to_owned())
         .build()
@@ -373,7 +365,7 @@ fn test_llm_creation_stress() {
     let llms: Vec<_> = (0..100)
         .map(|i| {
             LLM::builder()
-                .set_name(format!("model-{}", i))
+                .set_model(format!("model-{}", i))
                 .set_provider(LLMProvider::Google)
                 .build()
                 .unwrap()
@@ -384,14 +376,14 @@ fn test_llm_creation_stress() {
 
     // Verify each has unique name
     for (i, llm) in llms.iter().enumerate() {
-        assert_eq!(llm.name, format!("model-{}", i));
+        assert_eq!(llm.model, format!("model-{}", i));
     }
 }
 
 #[test]
 fn test_llm_with_many_tools() {
     let mut builder = LLM::builder()
-        .set_name("test".to_owned())
+        .set_model("test".to_owned())
         .set_provider(LLMProvider::Google);
 
     // Add 50 tools
@@ -414,7 +406,7 @@ fn test_llm_builder_idempotent() {
 
     for _ in 0..100 {
         let llm = LLM::builder()
-            .set_name("test-model".to_owned())
+            .set_model("test-model".to_owned())
             .set_provider(LLMProvider::Google)
             .set_system_prompt("System".to_owned())
             .set_authorization("Key".to_owned())
@@ -422,7 +414,7 @@ fn test_llm_builder_idempotent() {
             .unwrap();
 
         results.push((
-            llm.name.clone(),
+            llm.model.clone(),
             llm.system_prompt.clone(),
             llm.authorization.clone(),
         ));

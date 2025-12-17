@@ -1,7 +1,7 @@
 /// This is the full implementation of a custom tool in RustyChain.
 /// The `custom_tool.rs` example has been expanded here to show
 /// how to manually implement the necessary traits without using macros.
-use rustychain::{Message, prelude::*};
+use rustychain::{Inference, prelude::*};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -44,14 +44,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let llm = LLM::builder()
         .set_authorization(auth)
-        .set_name("gemini-2.5-flash".to_owned())
+        .set_model("gemini-2.5-flash".to_owned())
         .set_provider(LLMProvider::Google)
         .set_system_prompt("You are a helpful assistant.".to_owned())
         .add_tool(sum_tool.declare().into())
         .build()?;
 
     let response = llm
-        .inference(Message::user("What is the sum of 42 and 58?"))
+        .inference(Inference::as_user("What is the sum of 42 and 58?"))
         .generate()
         .await?;
 

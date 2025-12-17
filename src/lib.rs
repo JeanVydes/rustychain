@@ -33,7 +33,7 @@ pub mod prelude {
 
     #[cfg(feature = "tools")]
     pub use crate::ToolArgs;
-    pub use crate::error::CoreError;
+    pub use crate::error::Error;
     #[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
     pub use crate::function::{
         AnyFunction, FnDeclarator, FnExecutor, FunctionDeclaration, FunctionResult,

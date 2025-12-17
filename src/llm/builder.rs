@@ -1,5 +1,4 @@
 use crate::{
-    CoreError,
     llm::{AnyFunction, LLM, LLMProvider},
 };
 use std::sync::Arc;
@@ -8,7 +7,7 @@ use std::sync::Arc;
 #[derive(Default, Debug, Clone)]
 pub struct LLMBuilder {
     /// Model name or identifier.
-    pub name: Option<String>,
+    pub model: Option<String>,
     /// System prompt to guide the LLM's behavior.
     pub system_prompt: Option<String>,
     /// LLM provider (e.g., OpenAI, Google).
@@ -24,14 +23,24 @@ pub struct LLMBuilder {
 impl LLMBuilder {
     /// Builds the LLM instance from the configured parameters.
     pub fn build(self) -> crate::Result<LLM> {
+        let model = match self.model {
+            Some(n) => n,
+            None => {
+                return Err(crate::Error::Input("LLM name not set".to_owned()));
+            }
+        };
+
+        let provider = match self.provider {
+            Some(p) => p,
+            None => {
+                return Err(crate::Error::Input("LLM provider not set".to_owned()));
+            }
+        };
+
         Ok(LLM {
-            name: self
-                .name
-                .ok_or_else(|| Box::new(CoreError::Generic("Name not set".to_owned())))?,
+            model,
             system_prompt: self.system_prompt.unwrap_or_default(),
-            provider: self
-                .provider
-                .ok_or_else(|| Box::new(CoreError::Generic("Provider not set".to_owned())))?,
+            provider,
             authorization: self.authorization,
             tools: self.tools,
             endpoint: self.endpoint,
@@ -59,8 +68,8 @@ impl LLMBuilder {
     }
 
     /// Sets the model name.
-    pub fn set_name(mut self, name: String) -> Self {
-        self.name = Some(name);
+    pub fn set_model(mut self, name: String) -> Self {
+        self.model = Some(name);
         self
     }
 

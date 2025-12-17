@@ -1,6 +1,6 @@
-use rustychain::prelude::*;
+use rustychain::{Inference, prelude::*};
 use rustychain::tools::search::DuckDuckGoSearchTool;
-use rustychain::{LLM, LLMProvider, Message};
+use rustychain::{LLM, LLMProvider};
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -15,14 +15,14 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let llm = LLM::builder()
         .set_authorization(auth)
-        .set_name("gemini-2.5-flash".to_owned())
+        .set_model("gemini-2.5-flash".to_owned())
         .set_provider(LLMProvider::Google)
         .set_system_prompt("You are a helpful assistant.".to_owned())
         .add_tool(duckduckgo_tool.declare().into())
         .build()?;
 
     let response = llm
-        .inference(Message::user("What is the capital of Colombia?"))
+        .inference(Inference::as_user("What is the capital of Colombia?"))
         .generate()
         .await?;
 

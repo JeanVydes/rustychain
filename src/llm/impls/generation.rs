@@ -1,4 +1,4 @@
-use crate::{CoreError, GenerationConfig, LLM, LLMGeneration, LLMProvider, Message};
+use crate::{GenerationConfig, LLM, LLMGeneration, LLMProvider, conversation::Inference};
 
 #[async_trait::async_trait]
 impl LLMGeneration for LLM {
@@ -6,60 +6,50 @@ impl LLMGeneration for LLM {
     #[allow(unreachable_patterns)]
     async fn generation(
         &self,
-        history: &[Message],
-        message: &Message,
+        history: &[Inference],
+        inference: &Inference,
         config: GenerationConfig,
-    ) -> crate::Result<Message> {
+    ) -> crate::Result<Inference> {
         match self.provider {
             #[cfg(feature = "google")]
             LLMProvider::Google => {
-                use crate::CoreError;
+                use crate::Error;
 
-                let req = self.new_google_request(history, message, config)?;
+                let req = self.new_google_request(history, inference, config)?;
                 match req.execute().await {
-                    Ok(res) => Ok(Message::from_gemini(res)),
-                    Err(err) => Err(Box::from(CoreError::Gemini(err))),
+                    Ok(res) => Ok(Inference::from_gemini_response(res)),
+                    Err(err) => Err(Error::Gemini(err)),
                 }
             }
             #[cfg(feature = "openai")]
             LLMProvider::OpenAI => {
-                use std::error::Error;
-
                 let mut client = self.get_openai_client()?;
-                let req = self.new_openai_request(history, message, config)?;
-                let res = client.chat_completion(req).await.map_err(
-                    |e| -> Box<dyn Error + Send + Sync> {
-                        use crate::CoreError;
-
-                        Box::from(CoreError::OpenAI(format!("OpenAI request failed: {:?}", e)))
-                    },
-                )?;
+                let req = self.new_openai_request(history, inference, config)?;
+                let res = client.chat_completion(req).await?;
 
                 if let Some(choice) = res.choices.first() {
-                    Ok(Message::from_openai_chat_completion_message_for_response(
-                        &choice.message,
-                    )?)
+                    Ok(Inference::from_openai_choice(choice))
                 } else {
-                    Err(Box::from(CoreError::Generic(
+                    Err(crate::Error::Generic(
                         "No choices returned from OpenAI".to_owned(),
-                    )))
+                    ))
                 }
             }
             #[cfg(feature = "ollama")]
             LLMProvider::Ollama => {
                 use ollama_rs::Ollama;
 
-                let req = self.new_ollama_request(history, message, config)?;
+                let req = self.new_ollama_request(history, inference, config)?;
                 let res = Ollama::default().send_chat_messages(req).await?;
-                Ok(Message::from_ollama(res))
+                Ok(Inference::from_ollama_response(res))
             }
             #[cfg(feature = "anthropic")]
-            LLMProvider::Anthropic => Err(Box::from(CoreError::Generic(
+            LLMProvider::Anthropic => Err(crate::Error::Generic(
                 "Anthropic provider not yet implemented".to_owned(),
-            ))),
-            _ => Err(Box::from(CoreError::Unsupported(
+            )),
+            _ => Err(crate::Error::Unsupported(
                 "Provider not supported for generation".to_owned(),
-            ))),
+            )),
         }
     }
 }
