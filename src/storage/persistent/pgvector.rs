@@ -1,116 +1,30 @@
+//! pgvector
+
 use pgvector::Vector;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{FromRow, Pool, Postgres, Row};
 
-use crate::Error;
+use crate::{
+    CollectionStats, Cursor, DEFAULT_COLLECTION_NAME, DEFAULT_DIMENSIONS, Document, SearchOptions,
+    SearchResult, VectorStore,
+};
 
-pub const DEFAULT_TABLE_NAME: &str = "rag_documents";
-pub const DEFAULT_DIMENSIONS: i32 = 1536;
-
-#[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
-pub struct Document {
-    pub id: i32,
-    pub text: String,
-    #[sqlx(default)]
-    pub collection: Option<String>,
-    #[sqlx(default)]
-    pub metadata: Option<Value>,
-    #[serde(skip)]
-    #[sqlx(skip)]
-    pub embedding: Option<Vector>,
-}
-
-#[derive(Debug, Clone)]
-pub struct DocumentInput(
-    pub String,
-    pub Vec<f32>,
-    pub Option<String>,
-    pub Option<Value>,
-);
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SearchResult {
-    pub document: Document,
-    pub distance: f32,
-    pub score: f32, // 1.0 - distance for cosine
-}
-
-#[derive(JsonSchema, Serialize, Deserialize, Debug, Clone, Default)]
-pub struct SearchOptions {
-    #[schemars(description = "Number of nearest neighbors to retrieve")]
-    pub k: i32,
-    #[schemars(
-        description = "Distance threshold for filtering results",
-        range(min = 0.0, max = 2.0)
-    )]
-    pub threshold: Option<f32>,
-    #[schemars(
-        description = "The collection name to filter documents. If set, only documents from this collection will be considered."
-    )]
-    pub collection: Option<String>,
-    #[schemars(
-        description = "Metadata filter as a JSON object to filter documents. The filter should be a JSON object where keys are metadata fields and values are the expected values."
-    )]
-    pub metadata_filter: Option<Value>,
-    #[schemars(
-        description = "Whether to include embeddings in the results. Embeddings can be large, so enable only if needed."
-    )]
-    pub include_embeddings: bool,
-    #[schemars(description = "Whether to include distances in the results.")]
-    pub include_distances: bool,
-}
-
-impl SearchOptions {
-    pub fn new(k: i32) -> Self {
-        Self {
-            k,
-            ..Default::default()
-        }
-    }
-
-    pub fn with_threshold(mut self, threshold: f32) -> Self {
-        self.threshold = Some(threshold);
-        self
-    }
-
-    pub fn with_collection(mut self, collection: impl Into<String>) -> Self {
-        self.collection = Some(collection.into());
-        self
-    }
-
-    pub fn with_metadata_filter(mut self, filter: Value) -> Self {
-        self.metadata_filter = Some(filter);
-        self
-    }
-
-    pub fn include_embeddings(mut self) -> Self {
-        self.include_embeddings = true;
-        self
-    }
-
-    pub fn include_distances(mut self) -> Self {
-        self.include_distances = true;
-        self
-    }
-}
-
+/// PostgreSQL + pgvector implementation of VectorStore
 #[derive(Clone)]
-pub struct VectorStore {
+pub struct PgVectorStore {
     pub pool: Pool<Postgres>,
     pub table_name: Option<String>,
-    pub dimensions: Option<i32>,
+    pub dimensions: Option<usize>,
 }
 
-impl VectorStore {
+impl PgVectorStore {
     pub async fn new(
         db_url: &str,
         table_name: Option<String>,
-        dimensions: Option<i32>,
+        dimensions: Option<usize>,
     ) -> crate::Result<Self> {
         let pool = Pool::<Postgres>::connect(db_url).await?;
-        let store = VectorStore {
+        let store = PgVectorStore {
             pool,
             table_name,
             dimensions,
@@ -120,11 +34,9 @@ impl VectorStore {
     }
 
     fn table(&self) -> &str {
-        self.table_name.as_deref().unwrap_or(DEFAULT_TABLE_NAME)
-    }
-
-    fn dims(&self) -> i32 {
-        self.dimensions.unwrap_or(DEFAULT_DIMENSIONS)
+        self.table_name
+            .as_deref()
+            .unwrap_or(DEFAULT_COLLECTION_NAME)
     }
 
     /// Ensure the vector table exists with proper schema
@@ -199,14 +111,38 @@ impl VectorStore {
         Ok(())
     }
 
-    /// Add a document with optional collection and metadata
-    pub async fn add_document(
+    /// Rebuild the HNSW index for the table
+    pub async fn reindex_internal(&self) -> crate::Result<()> {
+        let index_name = format!("{}_embedding_idx", self.table());
+
+        // Drop existing index and recreate
+        let drop_query = format!("DROP INDEX IF EXISTS {}", index_name);
+        sqlx::query(&drop_query).execute(&self.pool).await?;
+
+        let create_query = format!(
+            "CREATE INDEX {} ON {} USING hnsw (embedding vector_cosine_ops)",
+            index_name,
+            self.table()
+        );
+        sqlx::query(&create_query).execute(&self.pool).await?;
+
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl VectorStore for PgVectorStore {
+    fn dims(&self) -> usize {
+        self.dimensions.unwrap_or(DEFAULT_DIMENSIONS)
+    }
+
+    async fn add_document(
         &self,
         text: String,
         embedding: Vec<f32>,
         collection: Option<String>,
         metadata: Option<Value>,
-    ) -> crate::Result<i32> {
+    ) -> crate::Result<String> {
         let vector = Vector::from(embedding);
         let query = format!(
             "INSERT INTO {} (text, embedding, collection, metadata) VALUES ($1, $2, $3, $4) RETURNING id",
@@ -221,26 +157,11 @@ impl VectorStore {
             .fetch_one(&self.pool)
             .await?;
 
-        Ok(row.get("id"))
+        let id: i32 = row.get("id");
+        Ok(id.to_string())
     }
 
-    /// Add multiple documents in a batch
-    pub async fn add_documents_batch(
-        &self,
-        documents: Vec<DocumentInput>,
-    ) -> crate::Result<Vec<i32>> {
-        let mut ids = Vec::new();
-
-        for d in documents {
-            let id = self.add_document(d.0, d.1, d.2, d.3).await?;
-            ids.push(id);
-        }
-
-        Ok(ids)
-    }
-
-    /// Advanced similarity search with options
-    pub async fn search(
+    async fn search(
         &self,
         query_embedding: Vec<f32>,
         options: SearchOptions,
@@ -275,10 +196,9 @@ impl VectorStore {
 
         if let Some(ref filter) = options.metadata_filter {
             // Support simple key-value filters like {"key": "value"}
-            for (key, value) in filter.as_object().unwrap_or(&serde_json::Map::new()) {
+            for (key, _value) in filter.as_object().unwrap_or(&serde_json::Map::new()) {
                 where_clauses.push(format!("metadata->>'{}' = ${}", key, param_idx));
                 param_idx += 1;
-                let _ = value; // We'll bind these in order
             }
         }
 
@@ -321,7 +241,7 @@ impl VectorStore {
             }
         }
 
-        q = q.bind(options.k);
+        q = q.bind(options.k as i32);
 
         let rows = q.fetch_all(&self.pool).await?;
 
@@ -335,14 +255,18 @@ impl VectorStore {
                 };
 
                 let embedding = if options.include_embeddings {
-                    row.try_get::<Vector, _>("embedding").ok()
+                    row.try_get::<Vector, _>("embedding")
+                        .ok()
+                        .map(|v| v.to_vec())
                 } else {
                     None
                 };
 
+                let id: i32 = row.get("id");
+
                 SearchResult {
                     document: Document {
-                        id: row.get("id"),
+                        id: id.to_string(),
                         text: row.get("text"),
                         collection: row.get("collection"),
                         metadata: row.get("metadata"),
@@ -357,65 +281,18 @@ impl VectorStore {
         Ok(results)
     }
 
-    /// Simple similarity search returning top k results
-    ///
-    /// This is a convenience wrapper around `search()` with default options.
-    ///
-    /// # Example
-    /// ```ignore
-    /// let results = store.similarity_search(embedding, 10).await?;
-    /// for result in results {
-    ///     println!("Score: {:.3} - {}", result.score, result.document.text);
-    /// }
-    /// ```
-    pub async fn similarity_search(
-        &self,
-        query_embedding: Vec<f32>,
-        k: i32,
-    ) -> crate::Result<Vec<SearchResult>> {
-        self.search(query_embedding, SearchOptions::new(k).include_distances())
-            .await
-    }
+    async fn delete(&self, id: &str) -> crate::Result<bool> {
+        let id_num: i32 = id
+            .parse()
+            .map_err(|_| crate::Error::Input(format!("Invalid ID format: {}", id)))?;
 
-    /// Simple similarity search returning results as concatenated text
-    ///
-    /// Useful for RAG contexts where you need a single string of relevant documents.
-    ///
-    /// # Example
-    /// ```ignore
-    /// let context = store.similarity_search_text(embedding, 5).await?;
-    /// let prompt = format!("Context:\n{}\n\nQuestion: {}", context, question);
-    /// ```
-    pub async fn similarity_search_text(
-        &self,
-        query_embedding: Vec<f32>,
-        k: i32,
-    ) -> crate::Result<String> {
-        let results = self.search(query_embedding, SearchOptions::new(k)).await?;
-
-        if results.is_empty() {
-            return Err(Error::NotFound("No relevant documents found.".to_string()));
-        }
-
-        let context = results
-            .into_iter()
-            .map(|r| r.document.text)
-            .collect::<Vec<_>>()
-            .join("\n---\n");
-
-        Ok(context)
-    }
-
-    /// Delete a document by ID
-    pub async fn delete(&self, id: i32) -> crate::Result<bool> {
         let query = format!("DELETE FROM {} WHERE id = $1", self.table());
-        let result = sqlx::query(&query).bind(id).execute(&self.pool).await?;
+        let result = sqlx::query(&query).bind(id_num).execute(&self.pool).await?;
 
         Ok(result.rows_affected() > 0)
     }
 
-    /// Delete all documents in a collection
-    pub async fn delete_collection(&self, collection: &str) -> crate::Result<u64> {
+    async fn delete_collection(&self, collection: &str) -> crate::Result<u64> {
         let query = format!("DELETE FROM {} WHERE collection = $1", self.table());
         let result = sqlx::query(&query)
             .bind(collection)
@@ -425,15 +302,13 @@ impl VectorStore {
         Ok(result.rows_affected())
     }
 
-    /// Clear all documents (truncate table)
-    pub async fn clear(&self) -> crate::Result<()> {
+    async fn clear(&self) -> crate::Result<()> {
         let query = format!("TRUNCATE TABLE {} RESTART IDENTITY", self.table());
         sqlx::query(&query).execute(&self.pool).await?;
         Ok(())
     }
 
-    /// Get document count
-    pub async fn count(&self, collection: Option<&str>) -> crate::Result<i64> {
+    async fn count(&self, collection: Option<&str>) -> crate::Result<i64> {
         let query = match collection {
             Some(_) => format!(
                 "SELECT COUNT(*) as count FROM {} WHERE collection = $1",
@@ -450,8 +325,7 @@ impl VectorStore {
         Ok(row.get("count"))
     }
 
-    /// List all collections
-    pub async fn list_collections(&self) -> crate::Result<Vec<String>> {
+    async fn list_collections(&self) -> crate::Result<Vec<String>> {
         let query = format!(
             "SELECT DISTINCT collection FROM {} WHERE collection IS NOT NULL",
             self.table()
@@ -467,49 +341,48 @@ impl VectorStore {
         Ok(collections)
     }
 
-    /// Rebuild the HNSW index for the table
-    pub async fn reindex(&self) -> crate::Result<()> {
-        let index_name = format!("{}_embedding_idx", self.table());
-
-        // Drop existing index and recreate
-        let drop_query = format!("DROP INDEX IF EXISTS {}", index_name);
-        sqlx::query(&drop_query).execute(&self.pool).await?;
-
-        let create_query = format!(
-            "CREATE INDEX {} ON {} USING hnsw (embedding vector_cosine_ops)",
-            index_name,
-            self.table()
-        );
-        sqlx::query(&create_query).execute(&self.pool).await?;
-
-        Ok(())
+    async fn reindex(&self) -> crate::Result<()> {
+        self.reindex_internal().await
     }
 
-    /// Get table statistics
-    pub async fn stats(&self) -> crate::Result<TableStats> {
+    async fn stats(&self, collection: Option<&str>) -> crate::Result<CollectionStats> {
         let query = format!(
             r#"
             SELECT 
                 pg_total_relation_size('{}') as total_size,
                 pg_indexes_size('{}') as index_size,
-                (SELECT count(*) FROM {}) as row_count
+                (SELECT count(*) FROM {}{}) as row_count
             "#,
             self.table(),
             self.table(),
-            self.table()
+            self.table(),
+            if collection.is_some() {
+                " WHERE collection = $1"
+            } else {
+                ""
+            }
         );
 
-        let row = sqlx::query(&query).fetch_one(&self.pool).await?;
+        let row = if let Some(coll) = collection {
+            sqlx::query(&query).bind(coll).fetch_one(&self.pool).await?
+        } else {
+            sqlx::query(&query).fetch_one(&self.pool).await?
+        };
 
-        Ok(TableStats {
-            total_size_bytes: row.try_get::<i64, _>("total_size").unwrap_or(0),
-            index_size_bytes: row.try_get::<i64, _>("index_size").unwrap_or(0),
-            row_count: row.try_get::<i64, _>("row_count").unwrap_or(0),
+        let total_size: i64 = row.try_get("total_size").unwrap_or(0);
+        let index_size: i64 = row.try_get("index_size").unwrap_or(0);
+        let row_count: i64 = row.try_get("row_count").unwrap_or(0);
+
+        Ok(CollectionStats {
+            total_documents: row_count,
+            total_size_bytes: Some(total_size),
+            metadata: Some(serde_json::json!({
+                "index_size_bytes": index_size,
+            })),
         })
     }
 
-    /// Delete documents matching a metadata filter
-    pub async fn delete_by_metadata(
+    async fn delete_by_metadata(
         &self,
         filter: &Value,
         collection: Option<&str>,
@@ -536,13 +409,14 @@ impl VectorStore {
         Ok(result.rows_affected())
     }
 
-    /// List documents with pagination
-    pub async fn list(
+    async fn list(
         &self,
-        limit: i32,
-        offset: i32,
+        limit: usize,
+        cursor: Option<Cursor>,
         collection: Option<&str>,
-    ) -> crate::Result<Vec<Document>> {
+    ) -> crate::Result<(Vec<Document>, Option<Cursor>)> {
+        let offset = cursor.as_ref().and_then(|c| c.offset).unwrap_or(0);
+
         let query = match collection {
             Some(_) => format!(
                 "SELECT id, text, collection, metadata FROM {} WHERE collection = $1 ORDER BY id LIMIT $2 OFFSET $3",
@@ -554,60 +428,85 @@ impl VectorStore {
             ),
         };
 
-        let rows: Vec<Document> = match collection {
+        #[derive(FromRow)]
+        struct PgDocument {
+            id: i32,
+            text: String,
+            collection: Option<String>,
+            metadata: Option<Value>,
+        }
+
+        let rows: Vec<PgDocument> = match collection {
             Some(coll) => {
                 sqlx::query_as(&query)
                     .bind(coll)
-                    .bind(limit)
+                    .bind(limit as i32)
                     .bind(offset)
                     .fetch_all(&self.pool)
                     .await?
             }
             None => {
                 sqlx::query_as(&query)
-                    .bind(limit)
+                    .bind(limit as i32)
                     .bind(offset)
                     .fetch_all(&self.pool)
                     .await?
             }
         };
 
-        Ok(rows)
+        let has_more = rows.len() == limit;
+        let next_cursor = if has_more {
+            Some(Cursor {
+                offset: Some(offset + limit as i64),
+                last_id: None,
+            })
+        } else {
+            None
+        };
+
+        let documents = rows
+            .into_iter()
+            .map(|row| Document {
+                id: row.id.to_string(),
+                text: row.text,
+                collection: row.collection,
+                metadata: row.metadata,
+                embedding: None,
+            })
+            .collect();
+
+        Ok((documents, next_cursor))
     }
-}
 
-/// Table statistics
-#[derive(Debug, Clone)]
-pub struct TableStats {
-    pub total_size_bytes: i64,
-    pub index_size_bytes: i64,
-    pub row_count: i64,
-}
+    async fn get(&self, id: &str) -> crate::Result<Option<Document>> {
+        let id_num: i32 = id
+            .parse()
+            .map_err(|_| crate::Error::Input(format!("Invalid ID format: {}", id)))?;
 
-impl TableStats {
-    /// Get human-readable total size
-    pub fn total_size_human(&self) -> String {
-        format_bytes(self.total_size_bytes)
-    }
+        let query = format!(
+            "SELECT id, text, collection, metadata FROM {} WHERE id = $1",
+            self.table()
+        );
 
-    /// Get human-readable index size
-    pub fn index_size_human(&self) -> String {
-        format_bytes(self.index_size_bytes)
-    }
-}
+        #[derive(FromRow)]
+        struct PgDocument {
+            id: i32,
+            text: String,
+            collection: Option<String>,
+            metadata: Option<Value>,
+        }
 
-fn format_bytes(bytes: i64) -> String {
-    const KB: i64 = 1024;
-    const MB: i64 = KB * 1024;
-    const GB: i64 = MB * 1024;
+        let row: Option<PgDocument> = sqlx::query_as(&query)
+            .bind(id_num)
+            .fetch_optional(&self.pool)
+            .await?;
 
-    if bytes >= GB {
-        format!("{:.2} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.2} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.2} KB", bytes as f64 / KB as f64)
-    } else {
-        format!("{} B", bytes)
+        Ok(row.map(|r| Document {
+            id: r.id.to_string(),
+            text: r.text,
+            collection: r.collection,
+            metadata: r.metadata,
+            embedding: None,
+        }))
     }
 }

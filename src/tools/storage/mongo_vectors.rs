@@ -1,6 +1,6 @@
-//! pgvector
+//! MongoDB
 //!
-//! This module provides tools for integrating PostgreSQL with pgvector
+//! This module provides tools for integrating MongoDB Atlas Vector Search
 //! as a vector store.
 
 use crate::llm::LLM;
@@ -9,19 +9,18 @@ use crate::{FunctionDeclaration, RecursiveCharacterTextSplitter, TextSplitter};
 use crate::{SearchOptions, VectorStore, prelude::*};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 #[derive(JsonSchema, Serialize, Deserialize, Debug)]
 pub struct SimpleRetrievalArgs {
-    #[schemars(description = "The query string to search for in the vector database.")]
+    #[schemars(description = "The query string to search for in the MongoDB vector database.")]
     pub query: String,
 }
 
 #[derive(JsonSchema, Serialize, Deserialize, Debug)]
 pub struct ComplexRetrievalArgs {
-    #[schemars(description = "The query string to search for in the vector database.")]
+    #[schemars(description = "The query string to search for in the MongoDB vector database.")]
     pub query: String,
     #[schemars(description = "Advanced search configuration options.")]
     pub config: SearchOptions,
@@ -29,14 +28,14 @@ pub struct ComplexRetrievalArgs {
 
 #[derive(JsonSchema, Serialize, Deserialize, Debug)]
 pub struct AugmentedArgs {
-    #[schemars(description = "The text content to be embedded and stored in the vector database.")]
+    #[schemars(description = "The text content to be embedded and stored in MongoDB.")]
     pub text: String,
     #[schemars(
         description = "Optional metadata to associate with the document, as a JSON object."
     )]
     pub metadata: Option<serde_json::Value>,
     #[schemars(
-        description = "The name of the collection to add the document to. It is recommended to use different collections for granular data. Example: all data related to invoices of January 2024 Q1 can go into 'invoices_jan_2024_q1' collection."
+        description = "The name of the collection to add the document to. Use different collections for granular data categorization."
     )]
     pub collection: Option<String>,
 }
@@ -46,17 +45,17 @@ impl ToolArgs for ComplexRetrievalArgs {}
 impl ToolArgs for AugmentedArgs {}
 
 #[derive(Clone)]
-pub struct PgVectorRetrievalTool {
+pub struct MongoRetrievalTool {
     pub store: Arc<Mutex<dyn VectorStore>>,
     pub llm: Arc<LLM>,
-    pub table_name: Option<String>,
+    pub collection_name: Option<String>,
 }
 
 #[derive(Clone)]
-pub struct PgVectorAugmentedTool {
+pub struct MongoAugmentedTool {
     pub store: Arc<Mutex<dyn VectorStore>>,
     pub llm: Arc<LLM>,
-    pub table_name: Option<String>,
+    pub collection_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,9 +65,9 @@ pub struct RetrievalResult {
 }
 
 #[async_trait::async_trait]
-impl FnExecutor<SimpleRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool {
+impl FnExecutor<SimpleRetrievalArgs, RetrievalResult> for MongoRetrievalTool {
     async fn call(&self, args: SimpleRetrievalArgs) -> crate::Result<RetrievalResult> {
-        log::debug!("RetrievalTool called with args: {:?}", args);
+        log::debug!("MongoRetrievalTool called with query: {}", args.query);
         let query = self.llm.embedding(&args.query, 1536).await?;
         let store = self.store.lock().await;
         let results = store.similarity_search(query, 10).await?;
@@ -84,10 +83,12 @@ impl FnExecutor<SimpleRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool 
 }
 
 #[async_trait::async_trait]
-impl FnExecutor<ComplexRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool {
+impl FnExecutor<ComplexRetrievalArgs, RetrievalResult> for MongoRetrievalTool {
     async fn call(&self, args: ComplexRetrievalArgs) -> crate::Result<RetrievalResult> {
-        log::debug!("RetrievalTool called with args: {:?}", args);
-        log::debug!("Generating embedding for query: {}", args.query);
+        log::debug!(
+            "MongoRetrievalTool (Complex) called with query: {}",
+            args.query
+        );
         let query = self.llm.embedding(&args.query, 1536).await?;
         let store = self.store.lock().await;
         let context = store.search(query, args.config).await?;
@@ -103,9 +104,9 @@ impl FnExecutor<ComplexRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool
 }
 
 #[async_trait::async_trait]
-impl FnExecutor<AugmentedArgs, serde_json::Value> for PgVectorAugmentedTool {
+impl FnExecutor<AugmentedArgs, serde_json::Value> for MongoAugmentedTool {
     async fn call(&self, args: AugmentedArgs) -> crate::Result<serde_json::Value> {
-        log::debug!("Generating embedding for query: {}", args.text);
+        log::debug!("MongoAugmentedTool processing text into embeddings");
 
         let splitter = RecursiveCharacterTextSplitter::new(crate::SplitterConfig {
             chunk_size: 1024,
@@ -116,72 +117,61 @@ impl FnExecutor<AugmentedArgs, serde_json::Value> for PgVectorAugmentedTool {
         });
 
         let chunks = splitter.split(&args.text);
-
-        let mut embeddings: HashMap<String, Vec<f32>> = HashMap::new();
+        let mut documents = Vec::new();
 
         for chunk in chunks {
             let embedding = self.llm.embedding(&chunk.content, 1536).await?;
-            embeddings.insert(chunk.content.clone(), embedding);
-        }
-
-        let store = self.store.lock().await;
-        let documents = embeddings
-            .into_iter()
-            .map(|(text, embedding)| crate::DocumentInput {
-                text,
+            documents.push(crate::DocumentInput {
+                text: chunk.content,
                 embedding,
                 metadata: args.metadata.clone(),
                 collection: args.collection.clone(),
-            })
-            .collect::<Vec<_>>();
+            });
+        }
 
+        let chunks_added = documents.len();
+
+        let store = self.store.lock().await;
         store.add_documents_batch(documents).await?;
 
-        log::debug!("Document added successfully");
+        log::debug!("Documents successfully stored in MongoDB");
 
         Ok(serde_json::json!({
-            "status": "Document added successfully"
+            "status": "Success",
+            "chunks_added": chunks_added,
         }))
     }
 }
 
-impl FnDeclarator<SimpleRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool {
+impl FnDeclarator<SimpleRetrievalArgs, RetrievalResult> for MongoRetrievalTool {
     fn declare(&self) -> FunctionDeclaration<SimpleRetrievalArgs, RetrievalResult> {
         FunctionDeclaration {
-            name: "retrieval_tool",
-            description: "Use this tool to perform a similarity search in the vector store and retrieve relevant documents based on the user's query.",
+            name: "mongo_retrieval_tool",
+            description: "Search for semantically similar documents in MongoDB Atlas. Useful for answering questions based on stored knowledge.",
             parameters: schema_for!(SimpleRetrievalArgs),
             executor: Arc::new(self.clone()),
         }
     }
 }
 
-impl FnDeclarator<ComplexRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool {
+impl FnDeclarator<ComplexRetrievalArgs, RetrievalResult> for MongoRetrievalTool {
     fn declare(&self) -> FunctionDeclaration<ComplexRetrievalArgs, RetrievalResult> {
         FunctionDeclaration {
-            name: "complex_retrieval_tool",
-            description: "Use this tool to perform a similarity search in the vector store with advanced search options and retrieve relevant documents based on the user's query.",
+            name: "mongo_complex_retrieval_tool",
+            description: "Advanced similarity search in MongoDB with filtering capabilities (metadata, collection names, and score thresholds).",
             parameters: schema_for!(ComplexRetrievalArgs),
-            executor: Arc::new(PgVectorRetrievalTool {
-                store: self.store.clone(),
-                llm: self.llm.clone(),
-                table_name: self.table_name.clone(),
-            }),
+            executor: Arc::new(self.clone()),
         }
     }
 }
 
-impl FnDeclarator<AugmentedArgs, serde_json::Value> for PgVectorAugmentedTool {
+impl FnDeclarator<AugmentedArgs, serde_json::Value> for MongoAugmentedTool {
     fn declare(&self) -> FunctionDeclaration<AugmentedArgs, serde_json::Value> {
         FunctionDeclaration {
-            name: "augmented_tool",
-            description: "Use this tool to add a new document to the vector store with its corresponding embedding.",
+            name: "mongo_augmented_tool",
+            description: "Save new information into the MongoDB vector store. The tool handles chunking and embedding generation automatically.",
             parameters: schema_for!(AugmentedArgs),
-            executor: Arc::new(PgVectorAugmentedTool {
-                store: self.store.clone(),
-                llm: self.llm.clone(),
-                table_name: self.table_name.clone(),
-            }),
+            executor: Arc::new(self.clone()),
         }
     }
 }

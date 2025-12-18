@@ -76,8 +76,21 @@ pub enum Error {
     MaxDepthReached,
 
     /// SQLx database errors
+    #[cfg(feature = "sql")]
     #[error("Database Error: {0}")]
     Sqlx(#[from] sqlx::Error),
+
+    #[cfg(feature = "qdrant")]
+    #[error("Database Connection Error: {0}")]
+    Qdrant(#[from] qdrant_client::QdrantError),
+
+    #[cfg(feature = "mongodb")]
+    #[error("MongoDB Error: {0}")]
+    MongoDB(#[from] mongodb::error::Error),
+
+    #[cfg(feature = "mongodb")]
+    #[error("BSON Serialization Error: {0}")]
+    Bson(#[from] bson::ser::Error),
 
     /// IO errors
     #[error("IO Error: {0}")]

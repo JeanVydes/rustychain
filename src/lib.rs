@@ -11,7 +11,7 @@ pub mod chain;
 pub mod error;
 #[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
 pub mod llm;
-pub mod orchestor;
+pub mod orchestrator;
 pub mod splitters;
 pub mod storage;
 #[cfg(feature = "tools")]

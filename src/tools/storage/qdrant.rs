@@ -1,6 +1,6 @@
-//! pgvector
+//! Qdrant
 //!
-//! This module provides tools for integrating PostgreSQL with pgvector
+//! This module provides tools for integrating Qdrant
 //! as a vector store.
 
 use crate::llm::LLM;
@@ -46,17 +46,17 @@ impl ToolArgs for ComplexRetrievalArgs {}
 impl ToolArgs for AugmentedArgs {}
 
 #[derive(Clone)]
-pub struct PgVectorRetrievalTool {
+pub struct QdrantRetrievalTool {
     pub store: Arc<Mutex<dyn VectorStore>>,
     pub llm: Arc<LLM>,
-    pub table_name: Option<String>,
+    pub collection_name: Option<String>,
 }
 
 #[derive(Clone)]
-pub struct PgVectorAugmentedTool {
+pub struct QdrantAugmentedTool {
     pub store: Arc<Mutex<dyn VectorStore>>,
     pub llm: Arc<LLM>,
-    pub table_name: Option<String>,
+    pub collection_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,9 +66,9 @@ pub struct RetrievalResult {
 }
 
 #[async_trait::async_trait]
-impl FnExecutor<SimpleRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool {
+impl FnExecutor<SimpleRetrievalArgs, RetrievalResult> for QdrantRetrievalTool {
     async fn call(&self, args: SimpleRetrievalArgs) -> crate::Result<RetrievalResult> {
-        log::debug!("RetrievalTool called with args: {:?}", args);
+        log::debug!("QdrantRetrievalTool called with args: {:?}", args);
         let query = self.llm.embedding(&args.query, 1536).await?;
         let store = self.store.lock().await;
         let results = store.similarity_search(query, 10).await?;
@@ -84,9 +84,9 @@ impl FnExecutor<SimpleRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool 
 }
 
 #[async_trait::async_trait]
-impl FnExecutor<ComplexRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool {
+impl FnExecutor<ComplexRetrievalArgs, RetrievalResult> for QdrantRetrievalTool {
     async fn call(&self, args: ComplexRetrievalArgs) -> crate::Result<RetrievalResult> {
-        log::debug!("RetrievalTool called with args: {:?}", args);
+        log::debug!("QdrantRetrievalTool called with args: {:?}", args);
         log::debug!("Generating embedding for query: {}", args.query);
         let query = self.llm.embedding(&args.query, 1536).await?;
         let store = self.store.lock().await;
@@ -103,9 +103,9 @@ impl FnExecutor<ComplexRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool
 }
 
 #[async_trait::async_trait]
-impl FnExecutor<AugmentedArgs, serde_json::Value> for PgVectorAugmentedTool {
+impl FnExecutor<AugmentedArgs, serde_json::Value> for QdrantAugmentedTool {
     async fn call(&self, args: AugmentedArgs) -> crate::Result<serde_json::Value> {
-        log::debug!("Generating embedding for query: {}", args.text);
+        log::debug!("Generating embedding for text: {}", args.text);
 
         let splitter = RecursiveCharacterTextSplitter::new(crate::SplitterConfig {
             chunk_size: 1024,
@@ -137,7 +137,7 @@ impl FnExecutor<AugmentedArgs, serde_json::Value> for PgVectorAugmentedTool {
 
         store.add_documents_batch(documents).await?;
 
-        log::debug!("Document added successfully");
+        log::debug!("Document added successfully to Qdrant");
 
         Ok(serde_json::json!({
             "status": "Document added successfully"
@@ -145,42 +145,42 @@ impl FnExecutor<AugmentedArgs, serde_json::Value> for PgVectorAugmentedTool {
     }
 }
 
-impl FnDeclarator<SimpleRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool {
+impl FnDeclarator<SimpleRetrievalArgs, RetrievalResult> for QdrantRetrievalTool {
     fn declare(&self) -> FunctionDeclaration<SimpleRetrievalArgs, RetrievalResult> {
         FunctionDeclaration {
-            name: "retrieval_tool",
-            description: "Use this tool to perform a similarity search in the vector store and retrieve relevant documents based on the user's query.",
+            name: "qdrant_retrieval_tool",
+            description: "Use this tool to perform a similarity search in the Qdrant vector store and retrieve relevant documents based on the user's query.",
             parameters: schema_for!(SimpleRetrievalArgs),
             executor: Arc::new(self.clone()),
         }
     }
 }
 
-impl FnDeclarator<ComplexRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool {
+impl FnDeclarator<ComplexRetrievalArgs, RetrievalResult> for QdrantRetrievalTool {
     fn declare(&self) -> FunctionDeclaration<ComplexRetrievalArgs, RetrievalResult> {
         FunctionDeclaration {
-            name: "complex_retrieval_tool",
-            description: "Use this tool to perform a similarity search in the vector store with advanced search options and retrieve relevant documents based on the user's query.",
+            name: "qdrant_complex_retrieval_tool",
+            description: "Use this tool to perform a similarity search in the Qdrant vector store with advanced search options and retrieve relevant documents based on the user's query.",
             parameters: schema_for!(ComplexRetrievalArgs),
-            executor: Arc::new(PgVectorRetrievalTool {
+            executor: Arc::new(QdrantRetrievalTool {
                 store: self.store.clone(),
                 llm: self.llm.clone(),
-                table_name: self.table_name.clone(),
+                collection_name: self.collection_name.clone(),
             }),
         }
     }
 }
 
-impl FnDeclarator<AugmentedArgs, serde_json::Value> for PgVectorAugmentedTool {
+impl FnDeclarator<AugmentedArgs, serde_json::Value> for QdrantAugmentedTool {
     fn declare(&self) -> FunctionDeclaration<AugmentedArgs, serde_json::Value> {
         FunctionDeclaration {
-            name: "augmented_tool",
-            description: "Use this tool to add a new document to the vector store with its corresponding embedding.",
+            name: "qdrant_augmented_tool",
+            description: "Use this tool to add a new document to the Qdrant vector store with its corresponding embedding. The document will be automatically split into chunks if it's too large.",
             parameters: schema_for!(AugmentedArgs),
-            executor: Arc::new(PgVectorAugmentedTool {
+            executor: Arc::new(QdrantAugmentedTool {
                 store: self.store.clone(),
                 llm: self.llm.clone(),
-                table_name: self.table_name.clone(),
+                collection_name: self.collection_name.clone(),
             }),
         }
     }
