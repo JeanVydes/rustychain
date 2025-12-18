@@ -44,10 +44,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let llm = LLM::builder()
         .set_authorization(auth)
-        .set_model("gemini-2.5-flash".to_owned())
+        .set_model("gemini-2.5-flash")
         .set_provider(LLMProvider::Google)
-        .set_system_prompt("You are a helpful assistant.".to_owned())
-        .add_tool(sum_tool.declare().into())
+        .set_system_prompt("You are a helpful assistant.")
+        .add_tool(sum_tool.declare())
         .build()?;
 
     let response = llm

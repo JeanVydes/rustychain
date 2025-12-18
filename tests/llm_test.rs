@@ -113,7 +113,7 @@ fn test_llm_builder_with_all_options() {
         .set_provider(LLMProvider::Google)
         .set_authorization("test-api-key".to_owned())
         .set_system_prompt("You are a helpful assistant".to_owned())
-        .add_tool(Arc::new(tool_decl))
+        .add_tool(tool_decl)
         .build();
 
     assert!(result.is_ok());
@@ -179,8 +179,8 @@ fn test_llm_has_authorization() {
 
 #[test]
 fn test_llm_has_multiple_tools() {
-    let tool1 = Arc::new(FnDeclarator::<TestToolArgs, _>::declare(&TestTool));
-    let tool2 = Arc::new(FnDeclarator::<TestToolArgs, _>::declare(&TestTool));
+    let tool1 = FnDeclarator::<TestToolArgs, _>::declare(&TestTool);
+    let tool2 = FnDeclarator::<TestToolArgs, _>::declare(&TestTool);
 
     let llm = LLM::builder()
         .set_model("test".to_owned())
@@ -262,7 +262,7 @@ fn test_inference_creation_for_llm() {
 
 #[test]
 fn test_llm_tools_are_accessible() {
-    let tool = Arc::new(FnDeclarator::<TestToolArgs, _>::declare(&TestTool));
+    let tool = FnDeclarator::<TestToolArgs, _>::declare(&TestTool);
 
     let llm = LLM::builder()
         .set_model("test".to_owned())
@@ -278,7 +278,7 @@ fn test_llm_tools_are_accessible() {
 
 #[tokio::test]
 async fn test_llm_tool_execution() {
-    let tool = Arc::new(FnDeclarator::<TestToolArgs, _>::declare(&TestTool));
+    let tool = FnDeclarator::<TestToolArgs, _>::declare(&TestTool);
 
     let llm = LLM::builder()
         .set_model("test".to_owned())
@@ -388,7 +388,7 @@ fn test_llm_with_many_tools() {
 
     // Add 50 tools
     for _ in 0..50 {
-        let tool = Arc::new(FnDeclarator::<TestToolArgs, _>::declare(&TestTool));
+        let tool = FnDeclarator::<TestToolArgs, _>::declare(&TestTool);
         builder = builder.add_tool(tool);
     }
 

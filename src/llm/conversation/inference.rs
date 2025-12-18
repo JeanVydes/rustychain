@@ -12,7 +12,7 @@ use crate::{
     llm::{FunctionResult, function::FunctionCall},
 };
 
-/// A `Message` in the conversation, which may include text, audio, images, and function calls/results.
+/// A `Inference` in the conversation, which may include text, audio, images, and function calls/results.
 /// This is a unified representation that can be converted to/from various LLM formats.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Inference {
@@ -43,9 +43,9 @@ pub struct InferenceContent {
 }
 
 impl Inference {
-    pub fn new(content: InferenceContent) -> Self {
+    pub fn new(content: impl Into<InferenceContent>) -> Self {
         Self {
-            content,
+            content: content.into(),
             ..Default::default()
         }
     }
@@ -333,7 +333,10 @@ impl Inference {
             }
         }
 
-        let finish_reason = candidate.finish_reason.as_ref().map(|t| FinishReason::from_google(t));
+        let finish_reason = candidate
+            .finish_reason
+            .as_ref()
+            .map(FinishReason::from_google);
 
         Inference {
             model: gemini_message.model_version.clone(),
@@ -480,6 +483,23 @@ impl Inference {
     }
 }
 
+impl Display for InferenceContent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#?}", self)
+    }
+}
+
+impl Default for InferenceContent {
+    fn default() -> Self {
+        Self {
+            role: Role::Assistant,
+            text: None,
+            audio: None,
+            images: None,
+        }
+    }
+}
+
 impl Display for Inference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:#?}", self)
@@ -490,17 +510,251 @@ impl Default for Inference {
     fn default() -> Self {
         Self {
             model: None,
-            content: InferenceContent {
-                role: Role::Assistant,
-                text: None,
-                audio: None,
-                images: None,
-            },
+            content: InferenceContent::default(),
             thinking: None,
             function_calls: vec![],
             function_results: vec![],
             finish_reason: None,
             usage: None,
         }
+    }
+}
+
+impl From<&str> for Inference {
+    fn from(s: &str) -> Self {
+        Inference::with_content(Role::User, s)
+    }
+}
+
+impl From<(Role, &str)> for Inference {
+    fn from((role, s): (Role, &str)) -> Self {
+        Inference::with_content(role, s)
+    }
+}
+
+impl From<InferenceContent> for Inference {
+    fn from(content: InferenceContent) -> Self {
+        Inference::new(content)
+    }
+}
+
+impl From<&str> for InferenceContent {
+    fn from(s: &str) -> Self {
+        InferenceContent {
+            role: Role::User,
+            text: Some(s.to_string()),
+            audio: None,
+            images: None,
+        }
+    }
+}
+
+impl From<(Role, &str)> for InferenceContent {
+    fn from((role, s): (Role, &str)) -> Self {
+        InferenceContent {
+            role,
+            text: Some(s.to_string()),
+            audio: None,
+            images: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::llm::function::FunctionCall;
+    use serde_json::json;
+
+    // --- Helpers ---
+
+    fn mock_function_call() -> FunctionCall {
+        FunctionCall {
+            name: "get_weather".to_string(),
+            arguments: json!({"city": "London"}),
+        }
+    }
+
+    fn mock_function_result() -> FunctionResult {
+        FunctionResult {
+            name: "get_weather".to_string(),
+            results: json!({"temp": 22}),
+        }
+    }
+
+    // --- Basic Inference Construction Tests ---
+
+    #[test]
+    fn test_inference_helpers() {
+        let user = Inference::as_user("hello");
+        assert_eq!(user.content.role, Role::User);
+        assert_eq!(user.content.text.unwrap(), "hello");
+
+        let assistant = Inference::as_assistant("hi");
+        assert_eq!(assistant.content.role, Role::Assistant);
+
+        let system = Inference::as_system("act as bot");
+        assert_eq!(system.content.role, Role::System);
+    }
+
+    #[test]
+    fn test_inference_with_tools() {
+        let inf = Inference::as_assistant("using tool").add_function_call(mock_function_call());
+
+        assert!(inf.has_function_calls());
+        assert_eq!(inf.function_calls[0].name, "get_weather");
+    }
+
+    #[test]
+    fn test_inference_with_results() {
+        let results = vec![mock_function_result()];
+        let inf = Inference::with_function_results(results);
+
+        assert_eq!(inf.content.role, Role::Tool);
+        assert!(inf.has_function_results());
+        assert_eq!(inf.function_results[0].name, "get_weather");
+    }
+
+    // --- Provider Transformation Tests ---
+
+    #[cfg(feature = "openai")]
+    #[test]
+    fn test_to_openai_message_with_tools() {
+        let inf = Inference::as_assistant("calling tool").add_function_call(mock_function_call());
+
+        let msg = inf.to_openai_message();
+
+        assert!(msg.tool_calls.is_some());
+        let tools = msg.tool_calls.unwrap();
+        assert_eq!(tools[0].function.name.as_ref().unwrap(), "get_weather");
+        // OpenAI tool calls IDs are generated as call_0, call_1...
+        assert_eq!(tools[0].id, "call_0");
+    }
+
+    #[cfg(feature = "openai")]
+    #[test]
+    fn test_to_openai_tool_result_mapping() {
+        let result = mock_function_result();
+        let inf = Inference::with_function_results(vec![result]);
+
+        let msg = inf.to_openai_message();
+
+        assert!(matches!(
+            msg.role,
+            openai_api_rs::v1::chat_completion::MessageRole::tool
+        ));
+        // Verify tool_call_id is derived from function name as per implementation
+        assert_eq!(msg.tool_call_id.unwrap(), "get_weather");
+
+        if let openai_api_rs::v1::chat_completion::Content::Text(t) = msg.content {
+            assert!(t.contains("22"));
+        } else {
+            panic!("Expected text content for tool result");
+        }
+    }
+
+    #[cfg(feature = "google")]
+    #[test]
+    fn test_to_gemini_message_multimodal() {
+        let audio_data = vec![1, 2, 3, 4];
+        let inf = Inference::as_user("listen to this")
+            .with_audio(audio_data)
+            .with_thinking("processing audio".to_string());
+
+        let msg = inf.to_gemini_message();
+
+        let parts = msg.content.parts.unwrap();
+        // Check for Audio (InlineData) and Text
+        assert!(parts.iter().any(|p| matches!(p, Part::InlineData { .. })));
+        assert!(parts.iter().any(|p| matches!(p, Part::Text { .. })));
+
+        // Check thinking flag in Gemini Text part
+        if let Part::Text { thought, .. } = &parts[1] {
+            assert_eq!(thought, &Some(true));
+        }
+    }
+
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn test_ollama_roundtrip_logic() {
+        let mut inf = Inference::as_user("see this");
+        inf = inf.add_image(Image::new("base64_data".into(), None));
+        inf = inf.with_thinking("thinking...".into());
+
+        let msg = inf.to_ollama_message();
+        assert_eq!(msg.images.unwrap().len(), 1);
+        assert_eq!(msg.thinking.unwrap(), "thinking...");
+    }
+
+    // --- Response Parsing Tests ---
+
+    #[cfg(feature = "google")]
+    #[test]
+    fn test_from_gemini_response_parsing() {
+        use gemini_rust::{Candidate, Content};
+
+        let response = GenerationResponse {
+            candidates: vec![Candidate {
+                content: Content {
+                    role: Some(gemini_rust::Role::Model),
+                    parts: Some(vec![
+                        Part::Text {
+                            text: "Hello".to_string(),
+                            thought: None,
+                            thought_signature: None,
+                        },
+                        Part::FunctionCall {
+                            function_call: gemini_rust::FunctionCall {
+                                name: "test_fn".into(),
+                                args: json!({}),
+                                thought_signature: None,
+                            },
+                            thought_signature: None,
+                        },
+                    ]),
+                },
+                finish_reason: Some(gemini_rust::FinishReason::Stop),
+                citation_metadata: None,
+                index: None,
+                safety_ratings: None,
+            }],
+            model_version: Some("gemini-1.5".into()),
+            response_id: None,
+            prompt_feedback: None,
+            usage_metadata: None,
+        };
+
+        let inf = Inference::from_gemini_response(response);
+        assert_eq!(inf.content.text.unwrap(), "Hello");
+        assert_eq!(inf.function_calls[0].name, "test_fn");
+        assert_eq!(inf.model.unwrap(), "gemini-1.5");
+    }
+
+    #[cfg(feature = "openai")]
+    #[test]
+    fn test_from_openai_stream_responses() {
+        // Test Content chunk
+        let chunk = ChatCompletionStreamResponse::Content("streaming text".into());
+        let inf = Inference::from_openai_stream_response(chunk).unwrap();
+        assert_eq!(inf.content.text.unwrap(), "streaming text");
+        assert!(matches!(inf.finish_reason, Some(FinishReason::Stop)));
+
+        // Test Done chunk
+        let done = ChatCompletionStreamResponse::Done;
+        let inf_done = Inference::from_openai_stream_response(done).unwrap();
+        assert!(inf_done.content.text.is_none());
+        assert!(matches!(inf_done.finish_reason, Some(FinishReason::Stop)));
+    }
+
+    // --- Traits and Conversions Tests ---
+
+    #[test]
+    fn test_inference_from_string_conversions() {
+        let inf: Inference = "simple message".into();
+        assert_eq!(inf.content.role, Role::User);
+        assert_eq!(inf.content.text.unwrap(), "simple message");
+
+        let tuple_inf: Inference = (Role::System, "init").into();
+        assert_eq!(tuple_inf.content.role, Role::System);
     }
 }

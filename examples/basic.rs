@@ -1,4 +1,4 @@
-use rustychain::{Inference, LLM, LLMProvider};
+use rustychain::{LLM, LLMProvider};
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -11,17 +11,12 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let llm = LLM::builder()
         .set_authorization(auth)
-        .set_model("gemini-2.5-flash".to_owned())
+        .set_model("gemini-2.5-flash")
         .set_provider(LLMProvider::Google)
-        .set_system_prompt("You are a helpful assistant.".to_owned())
+        .set_system_prompt("You are a helpful assistant.")
         .build()?;
 
-    let response = llm
-        .inference(Inference::as_user(
-            "Explain the theory of relativity in simple terms.",
-        ))
-        .generate()
-        .await?;
+    let response = llm.inference("Hello, how are you?").generate().await?;
 
     log::info!("Response: {}", response);
 

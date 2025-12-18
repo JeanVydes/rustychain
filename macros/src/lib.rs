@@ -201,9 +201,15 @@ pub fn runnable(attr: TokenStream, item: TokenStream) -> TokenStream {
         #struct_vis struct #struct_name #struct_generics #struct_fields
 
         #[async_trait::async_trait]
+        #[async_trait::async_trait]
         impl ::rustychain::chain::step::Runnable<#input_type, #output_type> for #struct_name {
-            async fn call(&self, input: ::std::sync::Arc<#input_type>) -> ::rustychain::Result<#output_type> {
-                self.#method_name((*input).clone()).await
+            async fn call(&self, input: ::std::sync::Arc<#input_type>) -> ::rustychain::Result<::std::sync::Arc<#output_type>> {
+                // Call the specified method to get the output. Should we pass Arc or deref?
+                // By now, we deref the Arc to pass the inner value to simplify usage.
+                // Trade-off between usability and performance.
+                let result = self.#method_name((*input).clone()).await?;
+                // Return the result wrapped in Arc
+                Ok(::std::sync::Arc::new(result))
             }
         }
     };

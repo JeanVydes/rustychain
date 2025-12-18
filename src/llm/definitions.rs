@@ -339,8 +339,8 @@ pub trait LLMEmbedding {
 
 impl LLM {
     /// Creates a new inference with this model.
-    pub fn inference<'a>(&self, inference: Inference) -> InferenceTask<'a> {
-        InferenceTask::new(inference, Arc::new(self.clone()))
+    pub fn inference<'a>(&self, inference: impl Into<Inference> + 'a) -> InferenceTask<'a> {
+        InferenceTask::new(inference.into(), Arc::new(self.clone()))
     }
 
     /// Creates a Gemini client configured for this LLM.
@@ -385,7 +385,7 @@ impl LLM {
     }
 
     /// Adds a single tool to the LLM.
-    pub fn add_tool<R>(&mut self, tool: Arc<dyn AnyFunction>) {
+    pub fn add_tool(&mut self, tool: Arc<dyn AnyFunction>) {
         self.tools.push(tool);
     }
 
@@ -613,5 +613,224 @@ impl LLM {
         }
 
         Ok(req)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::llm::function::AnyFunction;
+    use serde_json::json;
+    use std::sync::Arc;
+
+    // --- Mocks ---
+
+    #[derive(Debug)]
+    struct MockTool {
+        name: String,
+    }
+
+    #[async_trait::async_trait]
+    impl AnyFunction for MockTool {
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn description(&self) -> &str {
+            "mock description"
+        }
+        fn parameters_schema(&self) -> &schemars::Schema {
+            lazy_static::lazy_static! {
+                static ref SCHEMA: schemars::Schema = schemars::schema_for!(i32);
+            }
+            &SCHEMA
+        }
+        async fn execute(&self, _args: &serde_json::Value) -> crate::Result<serde_json::Value> {
+            Ok(json!({"status": "ok"}))
+        }
+
+        #[cfg(feature = "google")]
+        fn gemini_tool_definition(&self) -> gemini_rust::Tool {
+            gemini_rust::Tool::Function {
+                function_declarations: vec![],
+            }
+        }
+
+        #[cfg(feature = "openai")]
+        fn openai_tool_definition(&self) -> openai_api_rs::v1::chat_completion::Tool {
+            openai_api_rs::v1::chat_completion::Tool {
+                r#type: openai_api_rs::v1::chat_completion::ToolType::Function,
+                function: openai_api_rs::v1::types::Function {
+                    name: self.name.clone(),
+                    description: None,
+                    parameters: openai_api_rs::v1::types::FunctionParameters {
+                        schema_type: openai_api_rs::v1::types::JSONSchemaType::Object,
+                        properties: None,
+                        required: None,
+                    },
+                },
+            }
+        }
+
+        #[cfg(feature = "ollama")]
+        fn ollama_tool_definition(&self) -> ollama_rs::generation::tools::ToolInfo {
+            ollama_rs::generation::tools::ToolInfo {
+                tool_type: ollama_rs::generation::tools::ToolType::Function,
+                function: ollama_rs::generation::tools::ToolFunctionInfo {
+                    name: self.name.clone(),
+                    description: "".into(),
+                    parameters: schemars::schema_for!(i32),
+                },
+            }
+        }
+    }
+
+    fn create_test_llm(provider: LLMProvider) -> LLM {
+        LLM {
+            model: "test-model".into(),
+            system_prompt: "You are a test assistant".into(),
+            provider,
+            authorization: Some("test-key".into()),
+            endpoint: Some("http://localhost:8080".into()),
+            tools: vec![],
+        }
+    }
+
+    // --- Core LLM Logic Tests ---
+
+    #[test]
+    fn test_tool_registry_management() {
+        let mut llm = create_test_llm(LLMProvider::OpenAI);
+        let tool_name = "weather_api";
+
+        llm.add_tool(Arc::new(MockTool {
+            name: tool_name.into(),
+        }));
+
+        assert!(llm.exists_tool(tool_name));
+        assert!(llm.get_tool(tool_name).is_some());
+        assert_eq!(llm.get_tool(tool_name).unwrap().name(), tool_name);
+        assert!(!llm.exists_tool("non_existent"));
+    }
+
+    #[test]
+    fn test_generation_config_builder_flow() {
+        let config = GenerationConfig::default()
+            .with_temperature(0.7)
+            .with_thinking(ThinkingMode::Sized(500))
+            .with_stop_sequences(vec!["\n".into()]);
+
+        assert_eq!(config.temperature, 0.7);
+        assert!(matches!(config.thinking, ThinkingMode::Sized(500)));
+        assert_eq!(config.stop_sequences.unwrap()[0], "\n");
+    }
+
+    // --- Provider Request Mapping Tests ---
+
+    #[cfg(feature = "openai")]
+    #[test]
+    fn test_openai_request_composition() {
+        use crate::{Role, inference::InferenceContent};
+
+        let mut llm = create_test_llm(LLMProvider::OpenAI);
+        llm.add_tool(Arc::new(MockTool {
+            name: "test_tool".into(),
+        }));
+
+        let history = vec![];
+        let inference = Inference {
+            content: InferenceContent::from((Role::User, "Hello, how are you?")),
+            ..Default::default()
+        };
+        let config = GenerationConfig::default();
+
+        let req = llm
+            .new_openai_request(&history, &inference, config)
+            .unwrap();
+
+        assert_eq!(req.model, "test-model");
+        // System prompt + user inference = 2 messages
+        assert_eq!(req.messages.len(), 2);
+        assert!(req.tools.is_some());
+        assert_eq!(req.tools.unwrap().len(), 1);
+    }
+
+    #[cfg(feature = "google")]
+    #[test]
+    fn test_google_thinking_budget_mapping() {
+        let llm = create_test_llm(LLMProvider::Google);
+        let history = vec![];
+        let inference = Inference::default();
+
+        // Test sized budget
+        let config_sized = GenerationConfig::default().with_thinking(ThinkingMode::Sized(1024));
+        let _req_sized = llm
+            .new_google_request(&history, &inference, config_sized)
+            .unwrap();
+        // Since ContentBuilder is opaque, we verify it doesn't error and mapping is correct
+        assert_eq!(ThinkingMode::Sized(1024).to_google(), 1024);
+        // Test none
+        assert_eq!(ThinkingMode::None.to_google(), 0);
+    }
+
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn test_ollama_request_composition() {
+        let llm = create_test_llm(LLMProvider::Ollama);
+        let config =
+            GenerationConfig::default().with_thinking(ThinkingMode::Effort(ThinkingEffort::High));
+
+        let req = llm
+            .new_ollama_request(&[], &Inference::default(), config)
+            .unwrap();
+
+        // Ollama thinking is boolean in current implementation
+        assert!(req.think.unwrap_or_default());
+    }
+
+    // --- Error Cases ---
+
+    #[test]
+    fn test_missing_authorization_error() {
+        let llm = LLM {
+            model: "model".into(),
+            system_prompt: "".into(),
+            provider: LLMProvider::OpenAI,
+            authorization: None,
+            endpoint: None,
+            tools: vec![],
+        };
+
+        #[cfg(feature = "openai")]
+        assert!(matches!(
+            llm.get_openai_client(),
+            Err(crate::Error::Unauthorized(_))
+        ));
+
+        #[cfg(feature = "google")]
+        assert!(matches!(
+            llm.get_gemini_client(),
+            Err(crate::Error::Unauthorized(_))
+        ));
+    }
+
+    #[test]
+    fn test_thinking_mode_openai_effort_logic() {
+        #[cfg(feature = "openai")]
+        {
+            let mode = ThinkingMode::Effort(ThinkingEffort::Low);
+            let openai_reasoning = mode.to_openai().unwrap();
+
+            assert!(openai_reasoning.enabled.unwrap());
+            if let Some(openai_api_rs::v1::chat_completion::ReasoningMode::Effort { effort }) =
+                openai_reasoning.mode
+            {
+                assert!(matches!(
+                    effort,
+                    openai_api_rs::v1::chat_completion::ReasoningEffort::Low
+                ));
+            } else {
+                panic!("Reasoning mode effort mismatch");
+            }
+        }
     }
 }

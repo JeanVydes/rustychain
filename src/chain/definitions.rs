@@ -40,8 +40,8 @@ where
         }
     }
 
-    pub fn with_input(&mut self, input: I) -> &mut Self {
-        self.current_value = Some(Arc::new(input));
+    pub fn with_input(&mut self, input: Arc<I>) -> &mut Self {
+        self.current_value = Some(input);
         self.current_index = 0;
         self
     }
@@ -68,12 +68,13 @@ where
                     // Type State (R: Runnable<O, O2>) enforced that the previous step produced O.
                     let typed_input = input.downcast::<O>().map_err(crate::Error::Downcast)?;
 
-                    let t = typed_input.clone();
                     // Call the runnable with the downcasted input (O)
                     // and produce the new output (O2).
-                    let result = r.call(t).await?;
+                    let before = r.before(typed_input).await?;
+                    let output = r.call(before).await?;
+                    let after = r.after(output).await?;
                     // Box the O2 result back into Arc<dyn Any> for storage.
-                    Ok(Arc::new(result) as Arc<dyn Any + Send + Sync>)
+                    Ok(after as Arc<dyn Any + Send + Sync>)
                 })
             }),
         ));
@@ -345,5 +346,176 @@ where
 {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[async_trait::async_trait]
+impl<I, O> Runnable<I, O> for Chain<I, O>
+where
+    I: Clone + Send + Sync + 'static,
+    O: Clone + Send + Sync + 'static,
+{
+    async fn call(&self, input: Arc<I>) -> crate::Result<Arc<O>> {
+        let runner = self.clone();
+        let result_arc = runner.run((*input).clone()).await?;
+        Ok(result_arc)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chain::step::Runnable;
+    use async_trait::async_trait;
+    use std::sync::Arc;
+
+    // --- Mock Runnables para Testing ---
+
+    struct AddOne;
+    #[async_trait]
+    impl Runnable<i32, i32> for AddOne {
+        async fn call(&self, input: Arc<i32>) -> crate::Result<Arc<i32>> {
+            Ok(Arc::new(*input + 1))
+        }
+    }
+
+    struct ToStringStep;
+    #[async_trait]
+    impl Runnable<i32, String> for ToStringStep {
+        async fn call(&self, input: Arc<i32>) -> crate::Result<Arc<String>> {
+            Ok(Arc::new(input.to_string()))
+        }
+    }
+
+    struct InterceptorStep;
+    #[async_trait]
+    impl Runnable<i32, i32> for InterceptorStep {
+        async fn before(&self, input: Arc<i32>) -> crate::Result<Arc<i32>> {
+            // Multiplica por 2 antes de la ejecución
+            Ok(Arc::new(*input * 2))
+        }
+        async fn call(&self, input: Arc<i32>) -> crate::Result<Arc<i32>> {
+            Ok(Arc::new(*input + 5))
+        }
+        async fn after(&self, output: Arc<i32>) -> crate::Result<Arc<i32>> {
+            // Suma 10 después de la ejecución
+            Ok(Arc::new(*output + 10))
+        }
+    }
+
+    // --- Tests ---
+
+    #[tokio::test]
+    async fn test_basic_chain_flow() {
+        let chain = Chain::<i32, i32>::new()
+            .add_step("step1", AddOne) // 10 + 1 = 11
+            .add_step("step2", AddOne); // 11 + 1 = 12
+
+        let result = chain.run(10).await.unwrap();
+        assert_eq!(*result, 12);
+    }
+
+    #[tokio::test]
+    async fn test_heterogeneous_chain() {
+        let chain = Chain::<i32, i32>::new()
+            .add_step("add", AddOne) // 5 + 1 = 6
+            .add_step("string", ToStringStep); // "6"
+
+        let result = chain.run(5).await.unwrap();
+        assert_eq!(result.as_str(), "6");
+    }
+
+    #[tokio::test]
+    async fn test_runnable_hooks_execution() {
+        let chain = Chain::<i32, i32>::new().add_step("intercept", InterceptorStep);
+
+        // Input: 10
+        // Before: 10 * 2 = 20
+        // Call: 20 + 5 = 25
+        // After: 25 + 10 = 35
+        let result = chain.run(10).await.unwrap();
+        assert_eq!(*result, 35);
+    }
+
+    #[tokio::test]
+    async fn test_chain_next_iteration() {
+        let mut chain = Chain::<i32, i32>::new()
+            .add_step("s1", AddOne)
+            .add_step("s2", AddOne)
+            .set_input(10);
+
+        let r1 = chain.next().await.unwrap().unwrap();
+        assert_eq!(r1.name, "s1");
+        let out1 = r1.output.downcast::<i32>().unwrap();
+        assert_eq!(*out1, 11);
+
+        // Segundo paso
+        let r2 = chain.next().await.unwrap().unwrap();
+        assert_eq!(r2.name, "s2");
+        let out2 = r2.output.downcast::<i32>().unwrap();
+        assert_eq!(*out2, 12);
+
+        assert!(chain.next().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_chain_reset() {
+        let chain = Chain::<i32, i32>::new().add_step("s1", AddOne);
+
+        let res1 = chain.clone().run(10).await.unwrap();
+        assert_eq!(*res1, 11);
+
+        let mut runner = chain.set_input(20);
+        runner.run_remaining().await.unwrap();
+        let res2 = runner.finalize().unwrap();
+        assert_eq!(*res2, 21);
+    }
+
+    #[tokio::test]
+    async fn test_run_with_interceptor() {
+        let chain = Chain::<i32, i32>::new()
+            .add_step("s1", AddOne)
+            .add_step("s2", AddOne);
+
+        let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter_clone = counter.clone();
+
+        let result = chain
+            .run_with_interceptor(10, move |_idx, _name, _any| {
+                let c = counter_clone.clone();
+                Box::pin(async move {
+                    c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    Ok(())
+                })
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(*result, 12);
+        assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn test_error_propagation() {
+        struct ErrorStep;
+        #[async_trait]
+        impl Runnable<i32, i32> for ErrorStep {
+            async fn call(&self, _input: Arc<i32>) -> crate::Result<Arc<i32>> {
+                Err(crate::Error::Internal("Forced Error".into()))
+            }
+        }
+
+        let chain = Chain::<i32, i32>::new().add_step("error_step", ErrorStep);
+
+        let result = chain.run(10).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_type_state_pattern_safety() {
+        let chain = Chain::<i32, i32>::new().add_step("step", ToStringStep);
+
+        let res = chain.run(10).await.unwrap();
+        assert_eq!(res.as_str(), "10");
     }
 }

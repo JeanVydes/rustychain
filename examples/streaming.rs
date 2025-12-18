@@ -1,5 +1,5 @@
 use futures_util::stream::StreamExt;
-use rustychain::{Inference, LLM, LLMProvider};
+use rustychain::{LLM, LLMProvider};
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -12,13 +12,13 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let llm = LLM::builder()
         .set_authorization(auth)
-        .set_model("gpt-5.2-2025-12-11".to_owned())
+        .set_model("gpt-5.2-2025-12-11")
         .set_provider(LLMProvider::OpenAI)
-        .set_system_prompt("You are a helpful assistant.".to_owned())
+        .set_system_prompt("You are a helpful assistant.")
         .build()?;
 
     let mut stream = llm
-        .inference(Inference::as_user("Tell me a joke about computers."))
+        .inference("Tell me a joke about computers.")
         .stream()
         .await?;
 

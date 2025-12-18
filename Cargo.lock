@@ -3440,6 +3440,7 @@ dependencies = [
  "futures-util",
  "gemini-rust",
  "hex",
+ "lazy_static",
  "lettre",
  "log",
  "meval",

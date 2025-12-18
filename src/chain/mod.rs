@@ -5,6 +5,8 @@
 //! LLM-powered applications.
 
 pub mod definitions;
+pub mod parallel;
+pub mod router;
 pub mod step;
 pub use definitions::*;
 pub use step::*;

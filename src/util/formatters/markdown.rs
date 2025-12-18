@@ -234,9 +234,7 @@ impl Formatter for MarkdownFormatter {
             .get("content")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
-            .ok_or_else(|| {
-                crate::Error::Input("'content' field missing or not a string".into())
-            })
+            .ok_or_else(|| crate::Error::Input("'content' field missing or not a string".into()))
     }
 }
 
@@ -417,14 +415,17 @@ impl MarkdownFormatter {
 
         while i < chars.len() {
             // Bold
-            if i + 1 < chars.len() && chars[i] == '*' && chars[i + 1] == '*'
-                && let Some(end) = Self::find_closing_seq(&chars, i + 2, "**") {
-                    result.push_str("<strong>");
-                    result.push_str(&chars[i + 2..end].iter().collect::<String>());
-                    result.push_str("</strong>");
-                    i = end + 2;
-                    continue;
-                }
+            if i + 1 < chars.len()
+                && chars[i] == '*'
+                && chars[i + 1] == '*'
+                && let Some(end) = Self::find_closing_seq(&chars, i + 2, "**")
+            {
+                result.push_str("<strong>");
+                result.push_str(&chars[i + 2..end].iter().collect::<String>());
+                result.push_str("</strong>");
+                i = end + 2;
+                continue;
+            }
             // Italic
             if chars[i] == '*' || chars[i] == '_' {
                 let marker = chars[i];
@@ -438,28 +439,30 @@ impl MarkdownFormatter {
             }
             // Code
             if chars[i] == '`'
-                && let Some(end) = Self::find_closing_char(&chars, i + 1, '`') {
-                    result.push_str("<code>");
-                    result.push_str(&Self::escape_html(
-                        &chars[i + 1..end].iter().collect::<String>(),
-                    ));
-                    result.push_str("</code>");
-                    i = end + 1;
-                    continue;
-                }
+                && let Some(end) = Self::find_closing_char(&chars, i + 1, '`')
+            {
+                result.push_str("<code>");
+                result.push_str(&Self::escape_html(
+                    &chars[i + 1..end].iter().collect::<String>(),
+                ));
+                result.push_str("</code>");
+                i = end + 1;
+                continue;
+            }
             // Links
             if chars[i] == '['
-                && let Some((text_end, url_start, url_end)) = Self::parse_link(&chars, i) {
-                    let link_text = chars[i + 1..text_end].iter().collect::<String>();
-                    let url = chars[url_start..url_end].iter().collect::<String>();
-                    result.push_str(&format!(
-                        "<a href=\"{}\">{}</a>",
-                        Self::escape_html(&url),
-                        Self::escape_html(&link_text)
-                    ));
-                    i = url_end + 1;
-                    continue;
-                }
+                && let Some((text_end, url_start, url_end)) = Self::parse_link(&chars, i)
+            {
+                let link_text = chars[i + 1..text_end].iter().collect::<String>();
+                let url = chars[url_start..url_end].iter().collect::<String>();
+                result.push_str(&format!(
+                    "<a href=\"{}\">{}</a>",
+                    Self::escape_html(&url),
+                    Self::escape_html(&link_text)
+                ));
+                i = url_end + 1;
+                continue;
+            }
 
             match chars[i] {
                 '<' => result.push_str("&lt;"),

@@ -74,3 +74,93 @@ impl Role {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_role_serialization() {
+        let roles = vec![
+            (Role::System, "\"system\""),
+            (Role::Tool, "\"tool\""),
+            (Role::Assistant, "\"assistant\""),
+            (Role::User, "\"user\""),
+        ];
+
+        for (role, expected) in roles {
+            assert_eq!(serde_json::to_string(&role).unwrap(), expected);
+            let deserialized: Role = serde_json::from_str(expected).unwrap();
+            assert_eq!(deserialized, role);
+        }
+    }
+
+    #[test]
+    fn test_role_ordering_and_hash() {
+        use std::collections::HashSet;
+
+        let mut set = HashSet::new();
+        set.insert(Role::User);
+        set.insert(Role::User);
+
+        assert_eq!(set.len(), 1);
+        assert!(Role::System < Role::User);
+    }
+
+    #[cfg(feature = "openai")]
+    #[test]
+    fn test_openai_role_mapping() {
+        use openai_api_rs::v1::chat_completion::MessageRole as ORole;
+
+        let pairs = vec![
+            (Role::User, ORole::user),
+            (Role::System, ORole::system),
+            (Role::Tool, ORole::tool),
+            (Role::Assistant, ORole::assistant),
+        ];
+
+        for (internal, openai) in pairs {
+            assert!(matches!(internal.to_openai(), r if r == openai));
+            assert_eq!(Role::from_openai(&openai), internal);
+        }
+
+        // Test fallback for unexpected OpenAI roles (if any)
+        // Since OpenAI SDK uses an enum, we test the default mapping
+        assert_eq!(Role::from_openai(&ORole::assistant), Role::Assistant);
+    }
+
+    #[cfg(feature = "google")]
+    #[test]
+    fn test_google_role_mapping() {
+        use gemini_rust::Role as GRole;
+
+        // User maps to User
+        assert!(matches!(Role::User.to_gemini(), GRole::User));
+        assert_eq!(Role::from_google(&GRole::User), Role::User);
+
+        // System/Tool/Assistant map to Model in Gemini's two-role system
+        assert!(matches!(Role::System.to_gemini(), GRole::Model));
+        assert!(matches!(Role::Assistant.to_gemini(), GRole::Model));
+        assert!(matches!(Role::Tool.to_gemini(), GRole::Model));
+
+        assert_eq!(Role::from_google(&GRole::Model), Role::Assistant);
+    }
+
+    #[cfg(feature = "ollama")]
+    #[test]
+    fn test_ollama_role_mapping() {
+        use ollama_rs::generation::chat::MessageRole as OlRole;
+
+        let pairs = vec![
+            (Role::User, OlRole::User),
+            (Role::System, OlRole::System),
+            (Role::Tool, OlRole::Tool),
+            (Role::Assistant, OlRole::Assistant),
+        ];
+
+        for (internal, ollama) in pairs {
+            assert!(matches!(internal.to_ollama(), r if r == ollama));
+            assert_eq!(Role::from_ollama(&ollama), internal);
+        }
+    }
+}

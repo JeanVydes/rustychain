@@ -245,9 +245,7 @@ impl Formatter for HtmlFormatter {
             .get("content")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
-            .ok_or_else(|| {
-                crate::Error::Input("'content' field missing or not a string".into())
-            })
+            .ok_or_else(|| crate::Error::Input("'content' field missing or not a string".into()))
     }
 }
 
@@ -567,14 +565,17 @@ impl HtmlFormatter {
 
         while i < chars.len() {
             // Bold: **text** or __text__
-            if i + 1 < chars.len() && chars[i] == '*' && chars[i + 1] == '*'
-                && let Some(end) = Self::find_closing(&chars, i + 2, "**") {
-                    result.push_str("<strong>");
-                    result.push_str(&chars[i + 2..end].iter().collect::<String>());
-                    result.push_str("</strong>");
-                    i = end + 2;
-                    continue;
-                }
+            if i + 1 < chars.len()
+                && chars[i] == '*'
+                && chars[i + 1] == '*'
+                && let Some(end) = Self::find_closing(&chars, i + 2, "**")
+            {
+                result.push_str("<strong>");
+                result.push_str(&chars[i + 2..end].iter().collect::<String>());
+                result.push_str("</strong>");
+                i = end + 2;
+                continue;
+            }
 
             // Italic: *text* or _text_
             if chars[i] == '*' || chars[i] == '_' {
@@ -590,53 +591,61 @@ impl HtmlFormatter {
 
             // Code: `text`
             if chars[i] == '`'
-                && let Some(end) = Self::find_closing_char(&chars, i + 1, '`') {
-                    result.push_str("<code>");
-                    result.push_str(&Self::escape_html(
-                        &chars[i + 1..end].iter().collect::<String>(),
-                    ));
-                    result.push_str("</code>");
-                    i = end + 1;
-                    continue;
-                }
+                && let Some(end) = Self::find_closing_char(&chars, i + 1, '`')
+            {
+                result.push_str("<code>");
+                result.push_str(&Self::escape_html(
+                    &chars[i + 1..end].iter().collect::<String>(),
+                ));
+                result.push_str("</code>");
+                i = end + 1;
+                continue;
+            }
 
             // Links: [text](url)
             if chars[i] == '['
-                && let Some((text_end, url_start, url_end)) = Self::parse_link(&chars, i) {
-                    let link_text = chars[i + 1..text_end].iter().collect::<String>();
-                    let url = chars[url_start..url_end].iter().collect::<String>();
-                    result.push_str(&format!(
-                        "<a href=\"{}\">{}</a>",
-                        Self::escape_html(&url),
-                        Self::escape_html(&link_text)
-                    ));
-                    i = url_end + 1;
-                    continue;
-                }
+                && let Some((text_end, url_start, url_end)) = Self::parse_link(&chars, i)
+            {
+                let link_text = chars[i + 1..text_end].iter().collect::<String>();
+                let url = chars[url_start..url_end].iter().collect::<String>();
+                result.push_str(&format!(
+                    "<a href=\"{}\">{}</a>",
+                    Self::escape_html(&url),
+                    Self::escape_html(&link_text)
+                ));
+                i = url_end + 1;
+                continue;
+            }
 
             // Images: ![alt](src)
-            if chars[i] == '!' && i + 1 < chars.len() && chars[i + 1] == '['
-                && let Some((text_end, url_start, url_end)) = Self::parse_link(&chars, i + 1) {
-                    let alt = chars[i + 2..text_end].iter().collect::<String>();
-                    let src = chars[url_start..url_end].iter().collect::<String>();
-                    result.push_str(&format!(
-                        "<img src=\"{}\" alt=\"{}\" />",
-                        Self::escape_html(&src),
-                        Self::escape_html(&alt)
-                    ));
-                    i = url_end + 1;
-                    continue;
-                }
+            if chars[i] == '!'
+                && i + 1 < chars.len()
+                && chars[i + 1] == '['
+                && let Some((text_end, url_start, url_end)) = Self::parse_link(&chars, i + 1)
+            {
+                let alt = chars[i + 2..text_end].iter().collect::<String>();
+                let src = chars[url_start..url_end].iter().collect::<String>();
+                result.push_str(&format!(
+                    "<img src=\"{}\" alt=\"{}\" />",
+                    Self::escape_html(&src),
+                    Self::escape_html(&alt)
+                ));
+                i = url_end + 1;
+                continue;
+            }
 
             // Strikethrough: ~~text~~
-            if i + 1 < chars.len() && chars[i] == '~' && chars[i + 1] == '~'
-                && let Some(end) = Self::find_closing(&chars, i + 2, "~~") {
-                    result.push_str("<del>");
-                    result.push_str(&chars[i + 2..end].iter().collect::<String>());
-                    result.push_str("</del>");
-                    i = end + 2;
-                    continue;
-                }
+            if i + 1 < chars.len()
+                && chars[i] == '~'
+                && chars[i + 1] == '~'
+                && let Some(end) = Self::find_closing(&chars, i + 2, "~~")
+            {
+                result.push_str("<del>");
+                result.push_str(&chars[i + 2..end].iter().collect::<String>());
+                result.push_str("</del>");
+                i = end + 2;
+                continue;
+            }
 
             // Escape HTML special characters
             match chars[i] {

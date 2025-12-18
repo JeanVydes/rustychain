@@ -1,4 +1,5 @@
 use rustychain::chain::Chain;
+use rustychain::chain::parallel::ParallelRunnable;
 use rustychain::{Inference, prelude::*};
 use rustychain::{LLM, LLMProvider};
 use std::sync::Arc;
@@ -10,7 +11,7 @@ pub struct Input {
 
 #[derive(Debug, Clone)]
 pub struct Output {
-    parts: Vec<String>,
+    pub parts: Vec<String>,
 }
 
 #[runnable(
@@ -38,6 +39,23 @@ impl Summarizer {
             .ok_or_else(|| rustychain::Error::NoContent)?;
 
         Ok(response)
+    }
+}
+
+#[runnable(
+    input = String,
+    output = Output,
+)]
+pub struct BulletPointFormatter {}
+
+impl BulletPointFormatter {
+    pub async fn execute(&self, input: String) -> rustychain::Result<Output> {
+        let parts: Vec<String> = input
+            .lines()
+            .map(|line| line.trim().to_string())
+            .filter(|line| !line.is_empty())
+            .collect();
+        Ok(Output { parts })
     }
 }
 
@@ -77,10 +95,12 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'sta
             .build()?,
     );
 
+    let formatters = ParallelRunnable::new(BulletPointFormatter {}, Formatter {});
+
     // Build a chain with two steps: Summarization and Formatting
     let mut chain = Chain::new()
         .add_step("summarization".to_owned(), Summarizer { llm })
-        .add_step("formatting".to_owned(), Formatter {})
+        .add_step("formatting".to_owned(), formatters)
         .set_input(Input {
             text: EXAMPLE_TEST.to_owned(),
         });
@@ -90,20 +110,12 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'sta
         let step_result = r?;
         match step_result.name.as_str() {
             "summarization" => {
-                if let Some(input) = step_result.input.downcast_ref::<Input>() {
-                    log::info!("Summarization Input: {}", &input.text[..100]);
-                }
-                if let Some(output) = step_result.output.downcast_ref::<String>() {
-                    log::info!("Summarization Output: {}", output);
-                }
+                let step_result = step_result.downcast::<Input, String>()?;
+                log::info!("Summarization Output: {}", &step_result.output[..100]);
             }
             "formatting" => {
-                if let Some(input) = step_result.input.downcast_ref::<String>() {
-                    log::info!("Formatting Input: {}", input);
-                }
-                if let Some(output) = step_result.output.downcast_ref::<String>() {
-                    log::info!("Formatting Output: {}", output);
-                }
+                let step_result = step_result.downcast::<String, Output>()?;
+                log::info!("Formatting Output: {:?}", step_result.output);
             }
             _ => {}
         };
@@ -111,7 +123,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'sta
 
     // Finalize the chain and get the output of the last step
     let final_output = chain.finalize()?;
-    log::info!("Final Output: {:?}", final_output.parts);
+    log::info!("{:?}", final_output);
 
     return Ok(());
 }

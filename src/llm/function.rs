@@ -199,7 +199,7 @@ pub trait AnyFunction: Send + Debug + Sync {
 
 impl<A, R> From<FunctionDeclaration<A, R>> for Arc<dyn AnyFunction>
 where
-    A: de::DeserializeOwned + Debug + ToolArgs + 'static,
+    A: de::DeserializeOwned + ToolArgs + Debug + 'static,
     R: Serialize + Send + Sync + 'static,
 {
     fn from(decl: FunctionDeclaration<A, R>) -> Self {
@@ -307,8 +307,143 @@ macro_rules! declare_function {
         FunctionDeclaration {
             name: $name,
             description: $description,
-            parameters: schema.schema,
+            parameters: schema,
             executor: std::sync::Arc::new($executor),
         }
     }};
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use schemars::JsonSchema;
+    use serde_json::json;
+
+    // --- Mock implementation for ToolArgs ---
+    #[derive(JsonSchema, Serialize, Deserialize, Debug)]
+    struct CalculatorArgs {
+        a: f64,
+        b: f64,
+        operation: String,
+    }
+    impl ToolArgs for CalculatorArgs {}
+
+    struct CalcExecutor;
+    #[async_trait::async_trait]
+    impl FnExecutor<CalculatorArgs, f64> for CalcExecutor {
+        async fn call(&self, args: CalculatorArgs) -> crate::Result<f64> {
+            match args.operation.as_str() {
+                "add" => Ok(args.a + args.b),
+                "mul" => Ok(args.a * args.b),
+                _ => Err(crate::Error::Internal("Unknown op".into())),
+            }
+        }
+    }
+
+    // --- Conversion Tests ---
+
+    #[test]
+    fn test_schema_to_openai_parameters_conversion() {
+        let schema = schemars::schema_for!(CalculatorArgs);
+        let schema_val = serde_json::to_value(&schema).unwrap();
+
+        let openai_params = schema_to_openai_parameters(&schema_val);
+
+        assert_eq!(openai_params.schema_type, JSONSchemaType::Object);
+        let props = openai_params.properties.expect("Should have properties");
+
+        assert!(props.contains_key("a"));
+        assert!(props.contains_key("b"));
+        assert!(props.contains_key("operation"));
+
+        let required = openai_params.required.expect("Should have required fields");
+        assert!(required.contains(&"a".to_string()));
+    }
+
+    #[test]
+    fn test_function_call_mapping_openai() {
+        #[cfg(feature = "openai")]
+        {
+            let call = FunctionCall {
+                name: "get_weather".to_string(),
+                arguments: json!({"location": "London"}),
+            };
+
+            let openai_call = call.to_openai();
+            assert_eq!(openai_call.name.unwrap(), "get_weather");
+            assert_eq!(openai_call.arguments.unwrap(), "{\"location\":\"London\"}");
+        }
+    }
+
+    // --- FunctionDeclaration & AnyFunction Tests ---
+
+    #[tokio::test]
+    async fn test_function_declaration_execution() {
+        let decl = declare_function!("calc", "perform math", CalculatorArgs, f64, CalcExecutor);
+
+        // Valid execution
+        let args = json!({"a": 10.0, "b": 5.0, "operation": "add"});
+        let result = decl.execute(&args).await.unwrap();
+        assert_eq!(result, json!(15.0));
+
+        // Invalid arguments execution (wrong type)
+        let bad_args = json!({"a": "not_a_number", "b": 5.0});
+        let err = decl.execute(&bad_args).await;
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn test_any_function_trait_object() {
+        let decl = declare_function!("calc", "desc", CalculatorArgs, f64, CalcExecutor);
+
+        let any_fn: Arc<dyn AnyFunction> = Arc::new(decl);
+
+        assert_eq!(any_fn.name(), "calc");
+        assert_eq!(any_fn.description(), "desc");
+
+        // Verify schema presence
+        let schema = any_fn.parameters_schema();
+        let schema_json = serde_json::to_value(schema).unwrap();
+        assert!(schema_json.get("properties").is_some());
+    }
+
+    // --- Feature Specific Definitions ---
+
+    #[cfg(feature = "openai")]
+    #[test]
+    fn test_openai_tool_definition_generation() {
+        let decl = declare_function!("test_fn", "test_desc", CalculatorArgs, f64, CalcExecutor);
+
+        let tool = decl.openai_tool_definition();
+        assert_eq!(tool.function.name, "test_fn");
+        assert_eq!(tool.function.description.unwrap(), "test_desc");
+        assert!(tool.function.parameters.properties.is_some());
+    }
+
+    #[cfg(feature = "google")]
+    #[test]
+    fn test_gemini_tool_definition_generation() {
+        let decl = declare_function!("test_fn", "test_desc", CalculatorArgs, f64, CalcExecutor);
+
+        let tool = decl.gemini_tool_definition();
+        if let GeminiTool::Function {
+            function_declarations,
+        } = tool
+        {
+            assert_eq!(function_declarations[0].name, "test_fn");
+            assert_eq!(function_declarations[0].description, "test_desc");
+        } else {
+            panic!("Expected Function tool type");
+        }
+    }
+
+    #[test]
+    fn test_function_result_serialization() {
+        let res = FunctionResult {
+            name: "calc".to_string(),
+            results: json!(42.0),
+        };
+        let json_str = serde_json::to_string(&res).unwrap();
+        assert!(json_str.contains("\"results\":42.0"));
+    }
 }

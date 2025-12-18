@@ -57,3 +57,91 @@ impl FinishReason {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_finish_reason_serialization() {
+        let reason = FinishReason::MaxTokens;
+        let serialized = serde_json::to_string(&reason).unwrap();
+        assert_eq!(serialized, "\"MaxTokens\"");
+
+        let other = FinishReason::Other("CustomReason".to_string());
+        let serialized_other = serde_json::to_string(&other).unwrap();
+        assert!(serialized_other.contains("Other"));
+        assert!(serialized_other.contains("CustomReason"));
+    }
+
+    #[test]
+    fn test_finish_reason_deserialization() {
+        let json = "\"Safety\"";
+        let deserialized: FinishReason = serde_json::from_str(json).unwrap();
+        assert!(matches!(deserialized, FinishReason::Safety));
+
+        let complex_json = "{\"Other\":\"NetworkError\"}";
+        let deserialized_other: FinishReason = serde_json::from_str(complex_json).unwrap();
+        if let FinishReason::Other(msg) = deserialized_other {
+            assert_eq!(msg, "NetworkError");
+        } else {
+            panic!("Expected FinishReason::Other");
+        }
+    }
+
+    #[cfg(feature = "google")]
+    #[test]
+    fn test_from_google_mapping() {
+        use gemini_rust::FinishReason as GReason;
+
+        let pairs = vec![
+            (GReason::Stop, FinishReason::Stop),
+            (GReason::MaxTokens, FinishReason::MaxTokens),
+            (GReason::Safety, FinishReason::Safety),
+            (GReason::Recitation, FinishReason::Recitation),
+            (GReason::ImageSafety, FinishReason::ImageSafety),
+            (GReason::FinishReasonUnspecified, FinishReason::Unspecified),
+        ];
+
+        for (google, internal) in pairs {
+            let mapped = FinishReason::from_google(&google);
+            assert_eq!(
+                serde_json::to_value(&mapped).unwrap(),
+                serde_json::to_value(&internal).unwrap()
+            );
+        }
+
+        // Test specific "Other" string mapping
+        let language_mapped = FinishReason::from_google(&GReason::Language);
+        if let FinishReason::Other(s) = language_mapped {
+            assert_eq!(s, "Language");
+        } else {
+            panic!("Expected Other('Language')");
+        }
+    }
+
+    #[cfg(feature = "openai")]
+    #[test]
+    fn test_from_openai_mapping() {
+        use openai_api_rs::v1::chat_completion::FinishReason as OReason;
+
+        let stop_mapped = FinishReason::from_openai(&OReason::stop);
+        assert!(matches!(stop_mapped, FinishReason::Stop));
+
+        let length_mapped = FinishReason::from_openai(&OReason::length);
+        assert!(matches!(length_mapped, FinishReason::MaxTokens));
+
+        let filter_mapped = FinishReason::from_openai(&OReason::content_filter);
+        assert!(matches!(filter_mapped, FinishReason::Safety));
+
+        let tools_mapped = FinishReason::from_openai(&OReason::tool_calls);
+        assert!(matches!(tools_mapped, FinishReason::UnexpectedToolCall));
+
+        let null_mapped = FinishReason::from_openai(&OReason::null);
+        if let FinishReason::Other(s) = null_mapped {
+            assert_eq!(s, "Null");
+        } else {
+            panic!("Expected Other('Null')");
+        }
+    }
+}

@@ -58,34 +58,34 @@ impl LLMBuilder {
     }
 
     /// Adds a single tool to the LLM builder.
-    pub fn add_tool(mut self, tool: Arc<dyn AnyFunction>) -> Self {
-        self.tools.push(tool);
+    pub fn add_tool(mut self, tool: impl Into<Arc<dyn AnyFunction>>) -> Self {
+        self.tools.push(tool.into());
         self
     }
 
     /// Adds multiple tools to the LLM builder.
-    pub fn add_tools(mut self, tools: Vec<Arc<dyn AnyFunction>>) -> Self {
+    pub fn add_tools(mut self, tools: Vec<impl Into<Arc<dyn AnyFunction>>>) -> Self {
         for tool in tools {
-            self.tools.push(tool);
+            self.tools.push(tool.into());
         }
         self
     }
 
     /// Sets the authorization token.
-    pub fn set_authorization(mut self, authorization: String) -> Self {
-        self.authorization = Some(authorization);
+    pub fn set_authorization(mut self, authorization: impl ToString) -> Self {
+        self.authorization = Some(authorization.to_string());
         self
     }
 
     /// Sets the model name.
-    pub fn set_model(mut self, name: String) -> Self {
-        self.model = Some(name);
+    pub fn set_model(mut self, name: impl ToString) -> Self {
+        self.model = Some(name.to_string());
         self
     }
 
     /// Sets the system prompt.
-    pub fn set_system_prompt(mut self, prompt: String) -> Self {
-        self.system_prompt = Some(prompt);
+    pub fn set_system_prompt(mut self, prompt: impl ToString) -> Self {
+        self.system_prompt = Some(prompt.to_string());
         self
     }
 
@@ -96,8 +96,8 @@ impl LLMBuilder {
     }
 
     /// Sets a custom endpoint for the LLM API.
-    pub fn set_endpoint(mut self, endpoint: String) -> Self {
-        self.endpoint = Some(endpoint);
+    pub fn set_endpoint(mut self, endpoint: impl ToString) -> Self {
+        self.endpoint = Some(endpoint.to_string());
         self
     }
 }
