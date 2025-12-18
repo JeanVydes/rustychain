@@ -57,28 +57,36 @@ impl Agent {
         Err(crate::Error::MaxDepthReached)
     }
 
-    // Advances the agent by one step
-    // Returns None if the agent has finished
-    // Otherwise returns the next AgentStep
-    // The history is not updated here
-    // The decision to update the history is left to the caller
     pub async fn next(&mut self) -> Option<crate::Result<AgentStep>> {
-        let inference = self.current.take()?;
-        let step = match self.step(inference).await {
-            Ok(s) => s,
-            Err(e) => return Some(Err(e)),
-        };
+        let input_inference = self.current.take()?;
 
-        // Update the current inference based on the step result
-        // If the agent is finished, set current to None, so the next call to next() will return None due to the .take() above
-        self.current = match &step {
-            AgentStep::Finished(_) => None,
-            AgentStep::ToolReturn(inf) => Some(inf.clone()),
-        };
+        // Execute the LLM logic
+        let step_result = self.step(input_inference.clone()).await;
 
-        Some(Ok(step))
+        match step_result {
+            Ok(AgentStep::Finished(response)) => {
+                // Task done. We don't automatically push to history here
+                // to allow the developer to inspect the final response first.
+                Some(Ok(AgentStep::Finished(response)))
+            }
+            Ok(AgentStep::ToolReturn(tool_inference)) => {
+                // To keep the LLM state valid, we must archive the turn:
+                // 1. The Assistant's call (input_inference)
+                // 2. The Tool's results (tool_inference)
+                {
+                    let mut history = self.history.lock().await;
+                    history.push(input_inference);
+                    history.push(tool_inference.clone());
+                }
+
+                // Set current for the next iteration
+                self.current = Some(tool_inference.clone());
+                Some(Ok(AgentStep::ToolReturn(tool_inference)))
+            }
+            Err(e) => Some(Err(e)),
+        }
     }
-
+    
     pub async fn step(&self, inference: Inference) -> crate::Result<AgentStep> {
         let history_snapshot = self.history.lock().await;
 
@@ -172,7 +180,8 @@ impl Agent {
             }
         }
 
-        let tool_msg = Inference::with_function_results(tool_results);
-        Ok(AgentStep::ToolReturn(tool_msg))
+        Ok(AgentStep::ToolReturn(Inference::with_function_results(
+            tool_results,
+        )))
     }
 }
