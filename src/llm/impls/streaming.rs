@@ -21,7 +21,7 @@ impl LLMStreaming for LLM {
                 let stream = req.execute_stream().await?;
                 let mapped = stream.into_stream().map(|res| match res {
                     Ok(gen_resp) => Ok(Inference::from_gemini_response(gen_resp)),
-                    Err(e) => Err(crate::Error::Gemini(e)),
+                    Err(e) => Err(crate::Error::from(e)),
                 });
 
                 Ok(Box::pin(mapped))

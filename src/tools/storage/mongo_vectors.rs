@@ -4,7 +4,7 @@
 //! as a vector store.
 
 use crate::llm::LLM;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use crate::{FunctionDeclaration, RecursiveCharacterTextSplitter, TextSplitter};
 use crate::{SearchOptions, VectorStore, prelude::*};
 use schemars::{JsonSchema, schema_for};
@@ -39,10 +39,6 @@ pub struct AugmentedArgs {
     )]
     pub collection: Option<String>,
 }
-
-impl ToolArgs for SimpleRetrievalArgs {}
-impl ToolArgs for ComplexRetrievalArgs {}
-impl ToolArgs for AugmentedArgs {}
 
 #[derive(Clone)]
 pub struct MongoRetrievalTool {

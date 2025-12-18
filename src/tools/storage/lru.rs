@@ -3,7 +3,7 @@
 //! A Key-Value storage tool using an LRU cache policy with configurable capacity.
 
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use crate::memory::lru::LRUCache;
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -34,8 +34,6 @@ pub struct KvArgs {
     #[schemars(description = "The value to store (required for 'set').")]
     pub value: Option<serde_json::Value>,
 }
-
-impl ToolArgs for KvArgs {}
 
 #[derive(Clone)]
 pub struct KvLruTool<const N: usize> {

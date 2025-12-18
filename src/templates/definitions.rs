@@ -12,8 +12,7 @@ pub trait PromptTemplate {
 
     /// Compiles the template and validates that all placeholders were replaced
     fn compile(&self, context: &Self::Context) -> crate::Result<String> {
-        let value = serde_json::to_value(context)
-            .map_err(|e| crate::Error::Internal(format!("Serialization error: {}", e).into()))?;
+        let value = serde_json::to_value(context)?;
 
         let mut result = self.raw().to_string();
 

@@ -3,7 +3,7 @@
 //! Tool for hex encoding and decoding.
 
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -16,8 +16,6 @@ pub struct HexArgs {
     pub data: String,
 }
 
-impl ToolArgs for HexArgs {}
-
 #[derive(Clone, Default)]
 pub struct HexTool;
 
@@ -27,8 +25,7 @@ impl FnExecutor<HexArgs, String> for HexTool {
         match args.action.to_lowercase().as_str() {
             "encode" => Ok(hex::encode(args.data)),
             "decode" => {
-                let decoded = hex::decode(&args.data)
-                    .map_err(|e| crate::Error::Internal(format!("Invalid hex: {}", e).into()))?;
+                let decoded = hex::decode(&args.data)?;
                 Ok(String::from_utf8_lossy(&decoded).to_string())
             }
             _ => Err(crate::Error::Internal(

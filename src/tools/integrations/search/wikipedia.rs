@@ -1,6 +1,6 @@
 //! wikipedia
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use reqwest::Client;
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -13,8 +13,6 @@ pub struct WikipediaArgs {
     #[schemars(description = "Language code (e.g., 'en', 'es'). Default is 'en'.")]
     pub language: Option<String>,
 }
-
-impl ToolArgs for WikipediaArgs {}
 
 #[derive(Clone, Default)]
 pub struct WikipediaTool {
@@ -39,21 +37,13 @@ impl FnExecutor<WikipediaArgs, serde_json::Value> for WikipediaTool {
             urlencoding::encode(&args.title.replace(' ', "_"))
         );
 
-        let response = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| crate::Error::Internal(e.into()))?;
+        let response = self.client.get(url).send().await?;
 
         if !response.status().is_success() {
             return Ok(serde_json::json!({ "error": "Article not found" }));
         }
 
-        let data = response
-            .json::<serde_json::Value>()
-            .await
-            .map_err(|e| crate::Error::Internal(e.into()))?;
+        let data = response.json::<serde_json::Value>().await?;
 
         Ok(serde_json::json!({
             "title": data["title"],

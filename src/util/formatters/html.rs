@@ -238,8 +238,7 @@ impl Formatter for HtmlFormatter {
 
     fn from_json(json: &str) -> crate::Result<String> {
         // Strict parsing logic
-        let value: serde_json::Value = serde_json::from_str(json)
-            .map_err(|e| crate::Error::Input(format!("Invalid JSON: {}", e)))?;
+        let value: serde_json::Value = serde_json::from_str(json)?;
 
         value
             .get("content")

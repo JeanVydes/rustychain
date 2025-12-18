@@ -1,6 +1,6 @@
 //! hash
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha512};
@@ -12,8 +12,6 @@ pub struct HashArgs {
     #[schemars(description = "Algorithm: 'sha256' or 'sha512'")]
     pub algorithm: String,
 }
-
-impl ToolArgs for HashArgs {}
 
 #[derive(Clone, Default)]
 pub struct HashTool;

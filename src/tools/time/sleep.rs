@@ -3,7 +3,7 @@
 //! This module provides a non-blocking sleep tool for the agent.
 
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -16,8 +16,6 @@ pub struct WaitArgs {
     #[schemars(description = "A brief reason why the agent is waiting.")]
     pub reason: Option<String>,
 }
-
-impl ToolArgs for WaitArgs {}
 
 #[derive(Clone, Default)]
 pub struct WaitTool;

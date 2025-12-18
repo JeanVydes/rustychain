@@ -1,7 +1,7 @@
 //! statistics
 use crate::{
     FunctionDeclaration,
-    llm::function::{FnDeclarator, FnExecutor, ToolArgs},
+    llm::function::{FnDeclarator, FnExecutor},
 };
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -11,8 +11,6 @@ use std::sync::Arc;
 pub struct StatsArgs {
     pub data: Vec<f64>,
 }
-
-impl ToolArgs for StatsArgs {}
 
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct StatsResult {

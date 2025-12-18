@@ -1,6 +1,6 @@
 //! symmetric
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use aes_gcm::{
     Aes256Gcm, Key, Nonce,
     aead::{Aead, KeyInit},
@@ -18,15 +18,13 @@ pub struct SymmetricArgs {
     pub key_hex: String,
 }
 
-impl ToolArgs for SymmetricArgs {}
-
 #[derive(Clone, Default)]
 pub struct SymmetricTool;
 
 #[async_trait::async_trait]
 impl FnExecutor<SymmetricArgs, String> for SymmetricTool {
     async fn call(&self, args: SymmetricArgs) -> crate::Result<String> {
-        let key_bytes = hex::decode(&args.key_hex).map_err(|e| crate::Error::Internal(e.into()))?;
+        let key_bytes = hex::decode(&args.key_hex)?;
         let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
         let cipher = Aes256Gcm::new(key);
 
@@ -35,9 +33,7 @@ impl FnExecutor<SymmetricArgs, String> for SymmetricTool {
                 let mut nonce_bytes = [0u8; 12];
                 rand::rng().fill_bytes(&mut nonce_bytes);
                 let nonce = Nonce::from_slice(&nonce_bytes);
-                let ciphertext = cipher
-                    .encrypt(nonce, args.text.as_bytes())
-                    .map_err(|_| crate::Error::Internal("Encryption failed".into()))?;
+                let ciphertext = cipher.encrypt(nonce, args.text.as_bytes())?;
                 Ok(format!(
                     "{}:{}",
                     hex::encode(nonce_bytes),
@@ -51,13 +47,10 @@ impl FnExecutor<SymmetricArgs, String> for SymmetricTool {
                         "Invalid encrypted format. Expected nonce:ciphertext".into(),
                     ));
                 }
-                let nonce = hex::decode(parts[0]).map_err(|e| crate::Error::Internal(e.into()))?;
+                let nonce = hex::decode(parts[0])?;
                 let nonce = Nonce::from_slice(&nonce);
-                let ciphertext =
-                    hex::decode(parts[1]).map_err(|e| crate::Error::Internal(e.into()))?;
-                let plaintext = cipher.decrypt(nonce, ciphertext.as_ref()).map_err(|_| {
-                    crate::Error::Internal("Decryption failed. Wrong key or corrupted data".into())
-                })?;
+                let ciphertext = hex::decode(parts[1])?;
+                let plaintext = cipher.decrypt(nonce, ciphertext.as_ref())?;
                 Ok(String::from_utf8_lossy(&plaintext).to_string())
             }
             _ => Err(crate::Error::Internal("Invalid action".into())),

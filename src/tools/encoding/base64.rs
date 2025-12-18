@@ -2,7 +2,7 @@
 //!
 //! Tool for Base64 encoding and decoding.
 
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use crate::{BASE64_ENGINE, FunctionDeclaration};
 use base64::Engine as _;
 use schemars::{JsonSchema, schema_for};
@@ -17,8 +17,6 @@ pub struct Base64Args {
     pub data: String,
 }
 
-impl ToolArgs for Base64Args {}
-
 #[derive(Clone, Default)]
 pub struct Base64Tool;
 
@@ -28,9 +26,7 @@ impl FnExecutor<Base64Args, String> for Base64Tool {
         match args.action.to_lowercase().as_str() {
             "encode" => Ok(BASE64_ENGINE.encode(args.data)),
             "decode" => {
-                let decoded_bytes = BASE64_ENGINE
-                    .decode(&args.data)
-                    .map_err(|e| crate::Error::Internal(format!("Invalid Base64: {}", e).into()))?;
+                let decoded_bytes = BASE64_ENGINE.decode(&args.data)?;
                 Ok(String::from_utf8_lossy(&decoded_bytes).to_string())
             }
             _ => Err(crate::Error::Internal(

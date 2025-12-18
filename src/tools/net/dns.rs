@@ -1,6 +1,6 @@
 //! dns
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -18,8 +18,6 @@ pub struct DnsArgs {
     pub record_type: Option<String>,
 }
 
-impl ToolArgs for DnsArgs {}
-
 #[derive(Clone, Default)]
 pub struct DnsTool;
 
@@ -33,8 +31,7 @@ pub struct DnsResult {
 #[async_trait::async_trait]
 impl FnExecutor<DnsArgs, DnsResult> for DnsTool {
     async fn call(&self, args: DnsArgs) -> crate::Result<DnsResult> {
-        let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default())
-            .map_err(|e| crate::Error::Internal(e.into()))?;
+        let resolver = Resolver::new(ResolverConfig::default(), ResolverOpts::default())?;
 
         let r_type_str = args
             .record_type
@@ -60,9 +57,7 @@ impl FnExecutor<DnsArgs, DnsResult> for DnsTool {
             }
         };
 
-        let lookup = resolver
-            .lookup(&args.domain, r_type)
-            .map_err(|e| crate::Error::Internal(e.into()))?;
+        let lookup = resolver.lookup(&args.domain, r_type)?;
 
         let records = lookup.iter().map(|data| data.to_string()).collect();
 

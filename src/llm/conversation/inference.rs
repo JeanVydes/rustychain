@@ -1,10 +1,14 @@
 use base64::Engine;
+#[cfg(feature = "google")]
 use gemini_rust::{Blob, Content, FunctionResponse, GenerationResponse, Part};
-use ollama_rs::generation::chat::{ChatMessage, ChatMessageResponse, MessageRole};
+#[cfg(feature = "ollama")]
+use ollama_rs::generation::chat::{ChatMessage, ChatMessageResponse};
 #[cfg(feature = "openai")]
 use openai_api_rs::v1::chat_completion::ChatCompletionChoice;
+#[cfg(feature = "openai")]
 use openai_api_rs::v1::chat_completion::chat_completion_stream::ChatCompletionStreamResponse;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::fmt::Display;
 
 use crate::{
@@ -19,12 +23,18 @@ pub struct Inference {
     pub model: Option<String>,
     pub content: InferenceContent,
 
-    pub thinking: Option<String>,
+    pub thoughts: Vec<Thought>,
     pub function_calls: Vec<FunctionCall>,
     pub function_results: Vec<FunctionResult>,
 
     pub finish_reason: Option<FinishReason>,
     pub usage: Option<UsageMetadata>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Thought {
+    pub text: String,
+    pub context: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,13 +127,16 @@ impl Inference {
         self
     }
 
-    pub fn with_thinking(mut self, thinking: String) -> Self {
-        self.thinking = Some(thinking);
+    pub fn with_thinking(mut self, thinking: String, context: Option<Value>) -> Self {
+        self.thoughts.push(Thought {
+            text: thinking,
+            context,
+        });
         self
     }
 
-    pub fn is_thinking(&self) -> bool {
-        self.thinking.is_some()
+    pub fn has_thoughts(&self) -> bool {
+        self.thoughts.is_empty() == false
     }
 
     pub fn has_function_calls(&self) -> bool {
@@ -139,6 +152,7 @@ impl Inference {
     pub fn to_gemini_message(&self) -> gemini_rust::Message {
         let role = match self.content.role {
             Role::User => gemini_rust::Role::User,
+            Role::Tool => gemini_rust::Role::User,
             _ => gemini_rust::Role::Model,
         };
 
@@ -159,10 +173,16 @@ impl Inference {
         if let Some(msg) = &self.content.text
             && let Some(parts) = &mut content.parts
         {
+            let is_thought = !self.thoughts.is_empty();
             parts.push(Part::Text {
                 text: msg.clone(),
-                thought: Some(self.thinking.is_some()),
-                thought_signature: None,
+                thought: if is_thought { Some(true) } else { None },
+                thought_signature: self
+                    .thoughts
+                    .first()
+                    .and_then(|t| t.context.as_ref())
+                    .and_then(|ctx| ctx.as_str())
+                    .map(|s| s.to_string()),
             });
         }
 
@@ -172,7 +192,7 @@ impl Inference {
             for fc in &self.function_calls {
                 parts.push(Part::FunctionCall {
                     function_call: fc.to_gemini(),
-                    thought_signature: None,
+                    thought_signature: fc.context.clone(),
                 });
             }
         }
@@ -196,71 +216,80 @@ impl Inference {
     /// Converts this `Message` to an Ollama-compatible message.
     #[cfg(feature = "ollama")]
     pub fn to_ollama_message(&self) -> ChatMessage {
-        let images = match &self.content.images {
-            Some(imgs) => imgs.iter().map(|img| img.to_ollama()).collect(),
-            None => vec![],
+        let images = self.content.images.as_ref().map(|imgs| {
+            imgs.into_iter()
+                .map(|img| img.to_ollama())
+                .collect::<Vec<_>>()
+        });
+
+        let tool_calls = self
+            .function_calls
+            .iter()
+            .map(|fc| fc.to_ollama())
+            .collect();
+
+        let thinking = match self.thoughts.is_empty() {
+            true => None,
+            false => Some(
+                self.thoughts
+                    .iter()
+                    .map(|t| t.text.clone())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
         };
 
         ChatMessage {
-            role: match self.content.role {
-                Role::User => MessageRole::User,
-                Role::System => MessageRole::System,
-                Role::Tool => MessageRole::Tool,
-                Role::Assistant => MessageRole::Assistant,
-            },
+            role: Role::to_ollama(&self.content.role),
             content: self.content.text.clone().unwrap_or_default(),
-            tool_calls: self
-                .function_calls
-                .iter()
-                .map(|fc| fc.to_ollama())
-                .collect(),
-            images: if images.is_empty() {
-                None
-            } else {
-                Some(images)
-            },
-            thinking: self.thinking.clone(),
+            tool_calls,
+            images,
+            thinking,
         }
     }
 
     /// Converts this `Message` to an OpenAI-compatible message.
     #[cfg(feature = "openai")]
-    pub fn to_openai_message(&self) -> openai_api_rs::v1::chat_completion::ChatCompletionMessage {
-        use openai_api_rs::v1::chat_completion::{
-            Content, MessageRole, ToolCall, ToolCallFunction,
-        };
-
-        let role = match self.content.role {
-            Role::User => MessageRole::user,
-            Role::Assistant => MessageRole::assistant,
-            Role::System => MessageRole::system,
-            Role::Tool => MessageRole::tool,
-        };
+    pub fn to_openai_message(
+        &self,
+    ) -> crate::Result<openai_api_rs::v1::chat_completion::ChatCompletionMessage> {
+        use openai_api_rs::v1::chat_completion::{Content, ToolCall, ToolCallFunction};
 
         // Convert function_calls to OpenAI tool_calls
         let tool_calls = if self.function_calls.is_empty() {
             None
         } else {
-            Some(
-                self.function_calls
-                    .iter()
-                    .enumerate()
-                    .map(|(i, fc)| ToolCall {
-                        id: format!("call_{}", i),
-                        r#type: "function".to_string(),
-                        function: ToolCallFunction {
-                            name: Some(fc.name.clone()),
-                            arguments: Some(fc.arguments.to_string()),
-                        },
-                    })
-                    .collect(),
-            )
+            let mut calls = Vec::new();
+
+            for fc in self.function_calls.iter().cloned() {
+                if fc.context.is_none() {
+                    return Err(crate::Error::Generic(
+                        "OpenAI tool call don't include context field".to_string(),
+                    ));
+                }
+
+                calls.push(ToolCall {
+                    // unwrap() is safe here due to the check above
+                    id: fc.context.unwrap(),
+                    r#type: "function_call".to_string(),
+                    function: ToolCallFunction {
+                        name: Some(fc.name.clone()),
+                        arguments: Some(fc.arguments.to_string()),
+                    },
+                });
+            }
+
+            Some(calls)
         };
 
         // For tool role (function results), we need tool_call_id
         let tool_call_id = if self.content.role == Role::Tool && !self.function_results.is_empty() {
-            // Use the function name as identifier (OpenAI expects the call ID)
-            self.function_results.first().map(|fr| fr.name.clone())
+            Some(
+                self.function_results
+                    .first()
+                    .map(|fr| fr.name.clone())
+                    .unwrap_or_default(),
+            )
         } else {
             None
         };
@@ -277,13 +306,13 @@ impl Inference {
             Content::Text(self.content.text.clone().unwrap_or_default())
         };
 
-        openai_api_rs::v1::chat_completion::ChatCompletionMessage {
-            role,
+        Ok(openai_api_rs::v1::chat_completion::ChatCompletionMessage {
+            role: Role::to_openai(&self.content.role),
             content,
             name: None,
             tool_call_id,
             tool_calls,
-        }
+        })
     }
 
     /// Converts a Gemini `GenerationResponse` to this `Message` format.
@@ -310,14 +339,27 @@ impl Inference {
         let mut function_calls = vec![];
         let mut message_parts = vec![];
         let mut audio_parts = vec![];
+        let mut thoughts: Vec<Thought> = vec![];
         if let Some(parts) = &candidate.content.parts {
             for part in parts {
                 if let Part::FunctionCall { function_call, .. } = part {
                     function_calls.push(FunctionCall::from_gemini(function_call.clone()));
                 }
 
-                if let Part::Text { text, .. } = part {
-                    message_parts.push(text.clone());
+                if let Part::Text {
+                    text,
+                    thought,
+                    thought_signature,
+                } = part
+                {
+                    if let Some(true) = thought {
+                        thoughts.push(Thought {
+                            text: text.clone(),
+                            context: thought_signature.as_ref().map(|s| Value::String(s.clone())),
+                        });
+                    } else {
+                        message_parts.push(text.clone());
+                    }
                 }
 
                 if let Part::InlineData { inline_data } = part
@@ -330,6 +372,10 @@ impl Inference {
                         audio_parts.push(audio_data);
                     }
                 }
+
+                if let Part::FunctionResponse { .. } = part {
+                    // Currently, we do not extract function results from Gemini responses.
+                }
             }
         }
 
@@ -341,21 +387,22 @@ impl Inference {
         Inference {
             model: gemini_message.model_version.clone(),
             content: InferenceContent {
-                role: Role::Assistant,
+                role: Role::from_google(
+                    &candidate
+                        .content
+                        .role
+                        .clone()
+                        .unwrap_or(gemini_rust::Role::Model),
+                ),
                 text: if message_parts.is_empty() {
                     None
                 } else {
                     Some(message_parts.join("\n"))
                 },
-                audio: if audio_parts.is_empty() {
-                    None
-                } else {
-                    // For simplicity, only take the first audio part
-                    Some(audio_parts.into_iter().next().unwrap())
-                },
+                audio: audio_parts.into_iter().next(),
                 images: None,
             },
-            thinking: gemini_message.thoughts().join("\n").into(),
+            thoughts,
             function_calls,
             finish_reason,
             ..Default::default()
@@ -380,17 +427,19 @@ impl Inference {
         Inference {
             model: Some(ollama_message.model),
             content: InferenceContent {
-                role: match ollama_message.message.role {
-                    MessageRole::User => Role::User,
-                    MessageRole::System => Role::System,
-                    MessageRole::Tool => Role::Tool,
-                    MessageRole::Assistant => Role::Assistant,
-                },
+                role: Role::from_ollama(&ollama_message.message.role),
                 text: Some(ollama_message.message.content.clone()),
                 audio: None,
                 images,
             },
-            thinking: ollama_message.message.thinking,
+            thoughts: if let Some(thinking) = &ollama_message.message.thinking {
+                vec![Thought {
+                    text: thinking.clone(),
+                    context: None,
+                }]
+            } else {
+                vec![]
+            },
             function_calls: ollama_message
                 .message
                 .tool_calls
@@ -417,23 +466,25 @@ impl Inference {
             .unwrap_or_default();
 
         let finish_reason = choice.finish_reason.as_ref().map(FinishReason::from_openai);
+        let thoughts = if let Some(text) = &choice.message.reasoning_content {
+            vec![Thought {
+                text: text.clone(),
+                context: None,
+            }]
+        } else {
+            vec![]
+        };
 
         Inference {
             // i think name is not the model name
             model: choice.message.name.clone(),
             content: InferenceContent {
-                role: match choice.message.role {
-                    openai_api_rs::v1::chat_completion::MessageRole::user => Role::User,
-                    openai_api_rs::v1::chat_completion::MessageRole::system => Role::System,
-                    openai_api_rs::v1::chat_completion::MessageRole::tool => Role::Tool,
-                    openai_api_rs::v1::chat_completion::MessageRole::assistant => Role::Assistant,
-                    _ => Role::Assistant,
-                },
+                role: Role::from_openai(&choice.message.role),
                 text: choice.message.content.clone(),
                 audio: None,
                 images: None,
             },
-            thinking: choice.message.reasoning_content.clone(),
+            thoughts,
             function_calls,
             finish_reason,
             ..Default::default()
@@ -511,7 +562,7 @@ impl Default for Inference {
         Self {
             model: None,
             content: InferenceContent::default(),
-            thinking: None,
+            thoughts: vec![],
             function_calls: vec![],
             function_results: vec![],
             finish_reason: None,
@@ -572,6 +623,7 @@ mod tests {
         FunctionCall {
             name: "get_weather".to_string(),
             arguments: json!({"city": "London"}),
+            context: None,
         }
     }
 
@@ -579,6 +631,7 @@ mod tests {
         FunctionResult {
             name: "get_weather".to_string(),
             results: json!({"temp": 22}),
+            context: None,
         }
     }
 
@@ -622,7 +675,7 @@ mod tests {
     fn test_to_openai_message_with_tools() {
         let inf = Inference::as_assistant("calling tool").add_function_call(mock_function_call());
 
-        let msg = inf.to_openai_message();
+        let msg = inf.to_openai_message().unwrap();
 
         assert!(msg.tool_calls.is_some());
         let tools = msg.tool_calls.unwrap();
@@ -637,7 +690,7 @@ mod tests {
         let result = mock_function_result();
         let inf = Inference::with_function_results(vec![result]);
 
-        let msg = inf.to_openai_message();
+        let msg = inf.to_openai_message().unwrap();
 
         assert!(matches!(
             msg.role,
@@ -659,7 +712,7 @@ mod tests {
         let audio_data = vec![1, 2, 3, 4];
         let inf = Inference::as_user("listen to this")
             .with_audio(audio_data)
-            .with_thinking("processing audio".to_string());
+            .with_thinking("processing audio".to_string(), None);
 
         let msg = inf.to_gemini_message();
 
@@ -679,7 +732,7 @@ mod tests {
     fn test_ollama_roundtrip_logic() {
         let mut inf = Inference::as_user("see this");
         inf = inf.add_image(Image::new("base64_data".into(), None));
-        inf = inf.with_thinking("thinking...".into());
+        inf = inf.with_thinking("thinking...".into(), None);
 
         let msg = inf.to_ollama_message();
         assert_eq!(msg.images.unwrap().len(), 1);

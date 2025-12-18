@@ -3,7 +3,7 @@
 //! This module provides tools to retrieve current time and handle timezone conversions.
 
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use chrono::Utc;
 use chrono_tz::Tz;
 use schemars::{JsonSchema, schema_for};
@@ -17,8 +17,6 @@ pub struct ClockArgs {
     )]
     pub timezone: Option<String>,
 }
-
-impl ToolArgs for ClockArgs {}
 
 #[derive(Clone, Default)]
 pub struct ClockTool;

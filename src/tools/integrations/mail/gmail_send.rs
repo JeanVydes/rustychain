@@ -1,6 +1,6 @@
 //! gmail_send
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
 use schemars::{JsonSchema, schema_for};
@@ -17,8 +17,6 @@ pub struct GmailArgs {
     pub subject: String,
     pub body: String,
 }
-
-impl ToolArgs for GmailArgs {}
 
 #[derive(Clone, Default)]
 pub struct GmailSendTool;

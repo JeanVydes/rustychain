@@ -3,7 +3,7 @@
 //! This module provides a tool for making HTTP requests using reqwest.
 
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -20,8 +20,6 @@ pub struct HttpArgs {
     #[schemars(description = "Optional headers for the request.")]
     pub headers: Option<HashMap<String, String>>,
 }
-
-impl ToolArgs for HttpArgs {}
 
 #[derive(Clone, Default)]
 pub struct HttpTool {
@@ -46,7 +44,7 @@ pub struct HttpResult {
 impl FnExecutor<HttpArgs, HttpResult> for HttpTool {
     async fn call(&self, args: HttpArgs) -> crate::Result<HttpResult> {
         let method = reqwest::Method::from_bytes(args.method.to_uppercase().as_bytes())
-            .map_err(|_| crate::Error::Internal("Invalid HTTP method".into()))?;
+            .map_err(|e| crate::Error::Internal(e.into()))?;
 
         let mut rb = self.client.request(method, &args.url);
 
@@ -60,10 +58,7 @@ impl FnExecutor<HttpArgs, HttpResult> for HttpTool {
             rb = rb.json(&body);
         }
 
-        let res = rb
-            .send()
-            .await
-            .map_err(|e| crate::Error::Internal(e.into()))?;
+        let res = rb.send().await?;
         let status = res.status().as_u16();
 
         // Attempt to parse as JSON, fallback to string if not possible

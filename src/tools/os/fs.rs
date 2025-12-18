@@ -4,7 +4,7 @@
 //! Each filesystem operation is implemented as an individual tool.
 
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -289,20 +289,6 @@ pub struct FileInfoArgs {
     #[schemars(description = "The path to get information about.")]
     pub path: String,
 }
-
-impl ToolArgs for ListDirectoryArgs {}
-impl ToolArgs for ShowTreeArgs {}
-impl ToolArgs for ReadFileArgs {}
-impl ToolArgs for WriteFileArgs {}
-impl ToolArgs for CreateFileArgs {}
-impl ToolArgs for ConcatenateFilesArgs {}
-impl ToolArgs for EditFileArgs {}
-impl ToolArgs for SearchInFileArgs {}
-impl ToolArgs for CreateDirectoryArgs {}
-impl ToolArgs for DeleteArgs {}
-impl ToolArgs for MoveArgs {}
-impl ToolArgs for CopyArgs {}
-impl ToolArgs for FileInfoArgs {}
 
 // ============================================================================
 // Tool Results

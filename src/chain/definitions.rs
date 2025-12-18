@@ -66,7 +66,7 @@ where
                     // Downcast input from Arc<dyn Any> to the expected input type O.
                     // This is guaranteed to succeed at runtime because the compile-time
                     // Type State (R: Runnable<O, O2>) enforced that the previous step produced O.
-                    let typed_input = input.downcast::<O>().map_err(crate::Error::Downcast)?;
+                    let typed_input = input.downcast::<O>()?;
 
                     // Call the runnable with the downcasted input (O)
                     // and produce the new output (O2).
@@ -291,7 +291,11 @@ where
         log::trace!("Finalizing the chain.");
 
         if self.current_index != self.steps.len() {
-            return Err(crate::Error::ChainNotFinalized);
+            return Err(crate::Error::ChainError {
+                index: self.current_index,
+                name: "".to_string(),
+                source: Box::new(crate::Error::Internal("Chain not fully executed".into())),
+            });
         }
 
         let final_value = self.current_value.ok_or_else(|| crate::Error::StepError {
@@ -304,9 +308,7 @@ where
             }),
         })?;
 
-        let output = final_value
-            .downcast::<O>()
-            .map_err(crate::Error::Downcast)?;
+        let output = final_value.downcast::<O>()?;
 
         Ok(output)
     }

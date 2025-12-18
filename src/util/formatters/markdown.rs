@@ -227,8 +227,7 @@ impl Formatter for MarkdownFormatter {
 
     /// Extract Markdown from JSON object
     fn from_json(json: &str) -> crate::Result<String> {
-        let value: Value = serde_json::from_str(json)
-            .map_err(|e| crate::Error::Input(format!("Invalid JSON: {}", e)))?;
+        let value: Value = serde_json::from_str(json)?;
 
         value
             .get("content")

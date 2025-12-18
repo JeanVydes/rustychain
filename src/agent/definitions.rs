@@ -54,7 +54,13 @@ impl Agent {
             }
         }
 
-        Err(crate::Error::MaxDepthReached)
+        Err(crate::Error::AgentError {
+            index: 0,
+            name: "".to_string(),
+            source: Box::new(crate::Error::Internal(
+                "Agent reached maximum depth without finishing".into(),
+            )),
+        })
     }
 
     pub async fn next(&mut self) -> Option<crate::Result<AgentStep>> {
@@ -86,7 +92,7 @@ impl Agent {
             Err(e) => Some(Err(e)),
         }
     }
-    
+
     pub async fn step(&self, inference: Inference) -> crate::Result<AgentStep> {
         let history_snapshot = self.history.lock().await;
 
@@ -134,7 +140,7 @@ impl Agent {
             let llm = self.llm.clone();
 
             workers.push((
-                call.name.clone(),
+                call.clone(),
                 tokio::spawn(async move {
                     let tool = match llm.get_tool(&call.name) {
                         Some(t) => t,
@@ -147,6 +153,7 @@ impl Agent {
                         Ok(val) => Ok(FunctionResult {
                             name: call.name.clone(),
                             results: val,
+                            context: call.context.clone(),
                         }),
                         Err(e) => Err(crate::Error::Internal(e.into())),
                     }
@@ -157,24 +164,26 @@ impl Agent {
         let results = join_all(
             workers
                 .into_iter()
-                .map(|(name, handle)| async move { (name, handle.await) }),
+                .map(|(function_call, handle)| async move { (function_call, handle.await) }),
         )
         .await;
 
         let mut tool_results: Vec<FunctionResult> = vec![];
-        for (name, res) in results {
+        for (function_call, res) in results {
             match res {
                 Ok(inner_result) => match inner_result {
                     Ok(func_res) => tool_results.push(func_res),
                     Err(e) => tool_results.push(FunctionResult {
-                        name: name.clone(),
+                        name: function_call.name.clone(),
                         results: serde_json::json!({"error": format!("{:?}", e)}),
+                        context: function_call.context.clone(),
                     }),
                 },
                 Err(join_err) => {
                     tool_results.push(FunctionResult {
-                        name: name.clone(),
+                        name: function_call.name.clone(),
                         results: serde_json::json!({"error": format!("Internal Server Errror: Task Join Error: {:?}", join_err)}),
+                        context: function_call.context.clone(),
                     });
                 }
             }

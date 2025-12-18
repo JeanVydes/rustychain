@@ -1,68 +1,60 @@
-//! Error
-//!
-//! Error handling
+// src/error.rs
+
+//! Error handling for RustyChain
 
 #[cfg(feature = "google")]
 pub use gemini_rust::ClientError;
 #[cfg(feature = "ollama")]
 pub use ollama_rs::error::OllamaError;
+
 use std::{any::Any, error::Error as StdError, sync::Arc};
 use thiserror::Error;
 
 /// A specialized Result type for the RustyChain core module.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Core errors for RustyChain
-/// These errors cover various failure scenarios in the core functionality,
-/// including interactions with LLM providers, serialization issues, and chain execution errors.
 #[derive(Debug, Error)]
 pub enum Error {
-    /// Generic error with a message
     #[error("{0}")]
     Generic(String),
 
-    // LLM PROVIDER ERRORS
-    /// Gemini provider errors
+    // --- LLM PROVIDER ERRORS ---
     #[cfg(feature = "google")]
     #[error("Gemini API Error: {0}")]
-    Gemini(#[from] ClientError),
+    Gemini(#[from] Box<ClientError>),
 
-    /// Ollama provider errors
     #[cfg(feature = "ollama")]
     #[error("Ollama Error: {0}")]
-    Ollama(#[from] OllamaError),
+    Ollama(#[from] Box<OllamaError>),
 
     #[cfg(feature = "openai")]
     #[error("OpenAI Error: {0}")]
-    OpenAI(#[from] openai_api_rs::v1::error::APIError),
+    OpenAI(#[from] Box<openai_api_rs::v1::error::APIError>),
 
-    // OTHER ERRORS
-    /// Serialization errors
+    // --- SERIALIZATION & NETWORK ---
     #[error("Serialization Error: {0}")]
-    Serde(#[from] serde_json::Error),
+    Serde(#[from] Box<serde_json::Error>),
 
-    /// HTTP errors
     #[error("HTTP Error: {0}")]
     HTTP(Box<dyn StdError + Send + Sync>),
 
-    #[cfg(feature = "tools")]
+    #[cfg(feature = "http")]
     #[error("Reqwest Error: {0}")]
-    Reqwest(#[from] reqwest::Error),
+    Reqwest(#[from] Box<reqwest::Error>),
 
     #[error("URL Parse Error: {0}")]
-    URL(#[from] url::ParseError),
+    URL(#[from] Box<url::ParseError>),
 
+    // --- SCRAPING & TOOLS ---
     #[error("HTML Parsing Error: {0}")]
     ParsingHTML(String),
 
     #[error("Scraper Selector Error: {0}")]
     Scraper(String),
 
-    /// Internal errors
     #[error("Internal Error: {0}")]
     Internal(Box<dyn StdError + Send + Sync>),
 
-    /// Not found errors
     #[error("Not Found: {0}")]
     NotFound(String),
 
@@ -72,46 +64,57 @@ pub enum Error {
     #[error("Operation timed out")]
     Timeout,
 
-    #[error("Maximum depth reached")]
-    MaxDepthReached,
-
-    /// SQLx database errors
+    // --- DATABASE ERRORS ---
     #[cfg(feature = "sql")]
     #[error("Database Error: {0}")]
-    Sqlx(#[from] sqlx::Error),
+    Sqlx(#[from] Box<sqlx::Error>),
 
     #[cfg(feature = "qdrant")]
-    #[error("Database Connection Error: {0}")]
-    Qdrant(#[from] qdrant_client::QdrantError),
+    #[error("Qdrant Connection Error: {0}")]
+    Qdrant(#[from] Box<qdrant_client::QdrantError>),
 
     #[cfg(feature = "mongodb")]
     #[error("MongoDB Error: {0}")]
-    MongoDB(#[from] mongodb::error::Error),
+    MongoDB(#[from] Box<mongodb::error::Error>),
 
     #[cfg(feature = "mongodb")]
     #[error("BSON Serialization Error: {0}")]
-    Bson(#[from] bson::ser::Error),
+    Bson(#[from] Box<bson::ser::Error>),
 
-    /// IO errors
+    // --- SYSTEM & UTILS ---
     #[error("IO Error: {0}")]
     IO(Box<dyn StdError + Send + Sync>),
 
     #[error("Invalid Input: {0}")]
     Input(String),
 
-    /// Unsupported operation errors
     #[error("Unsupported: {0}")]
     Unsupported(String),
 
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
 
-    /// Downcast errors
     #[error("Downcast Error")]
     Downcast(Arc<dyn Any + Send + Sync>),
 
     #[error("Tokio Join Error: {0}")]
-    TokioJoin(#[from] tokio::task::JoinError),
+    TokioJoin(#[from] Box<tokio::task::JoinError>),
+
+    #[cfg(any(feature = "hash", feature = "encryption"))]
+    #[error("Hex Error: {0}")]
+    Hex(#[from] Box<hex::FromHexError>),
+
+    #[cfg(feature = "search")]
+    #[error("Regex Error: {0}")]
+    Regex(#[from] Box<regex::Error>),
+
+    #[cfg(feature = "dns")]
+    #[error("DNS Resolution Error: {0}")]
+    Dns(#[from] Box<trust_dns_resolver::error::ResolveError>),
+
+    #[cfg(feature = "encryption")]
+    #[error("Encryption Error: {0}")]
+    Encryption(String),
 
     #[error("Tool Error: {source}")]
     ToolError {
@@ -119,18 +122,16 @@ pub enum Error {
         source: Box<dyn StdError + Send + Sync>,
     },
 
-    #[cfg(feature = "tools")]
+    #[cfg(feature = "password")]
     #[error("Argon2 Error: {source}")]
     Argon2 {
         source: Box<dyn StdError + Send + Sync>,
     },
 
-    /// Rate limit errors
+    // --- LOGIC ERRORS ---
     #[error("Rate limit exceeded. Retry after {retry_after_secs} seconds")]
     RateLimit { retry_after_secs: u64 },
 
-    // CHAIN ERRORS
-    /// Errors occurring during chain step execution
     #[error("Error in step {index} ('{step_name:?}'): {source}")]
     StepError {
         index: usize,
@@ -138,70 +139,38 @@ pub enum Error {
         source: Box<dyn StdError + Send + Sync>,
     },
 
-    /// Initial input was not set
     #[error("Initial input not set")]
     NotInput,
 
     #[error("Chain input validation failed: {message}")]
     Validation { message: String },
 
-    /// Chain has not been finalized yet
-    #[error("Chain has not been finalized yet")]
-    ChainNotFinalized,
+    #[error("Tool functions results not returned results")]
+    NotFunctionResults,
 
-    #[error("Search Error for query '{query:?}': {source:?}")]
+    #[error("Search Error: {query:?}, Source: {source:?}, Feedback: {feedback:?}")]
     Search {
         query: Option<String>,
         source: Option<Box<dyn StdError + Send + Sync>>,
         feedback: Option<String>,
     },
 
-    #[error("Tool functions results not returned results")]
-    NotFunctionResults,
+    #[error("Error in chain step {index} ('{name}'): {source}")]
+    ChainError {
+        index: usize,
+        name: String,
+        source: Box<dyn StdError + Send + Sync>,
+    },
+
+    #[error("Error in agent at step {index} ('{name}'): {source}")]
+    AgentError {
+        index: usize,
+        name: String,
+        source: Box<dyn StdError + Send + Sync>,
+    },
 }
 
-/// utility methods
 impl Error {
-    /// Check if an error is a rate limit error (HTTP 429)
-    pub fn is_rate_limit(error: &(dyn StdError + Send + Sync)) -> bool {
-        let error_str = error.to_string();
-        error_str.contains("429")
-            || error_str.contains("RESOURCE_EXHAUSTED")
-            || error_str.contains("rate limit")
-    }
-
-    /// Extract retry delay from error message if present
-    pub fn extract_retry_delay(error: &(dyn StdError + Send + Sync)) -> Option<u64> {
-        let error_str = error.to_string();
-
-        // Try to find "retry in X.Xs" pattern
-        if let Some(pos) = error_str.find("retry in ") {
-            let after = &error_str[pos + 9..];
-            if let Some(end) = after.find('s') {
-                let num_str = &after[..end];
-                if let Ok(secs) = num_str.parse::<f64>() {
-                    return Some(secs.ceil() as u64);
-                }
-            }
-        }
-
-        // Try to find "retryDelay": "Xs" pattern
-        if let Some(pos) = error_str.find("\"retryDelay\":") {
-            let after = &error_str[pos + 13..];
-            if let Some(start) = after.find('"') {
-                let after_quote = &after[start + 1..];
-                if let Some(end) = after_quote.find('s') {
-                    let num_str = &after_quote[..end];
-                    if let Ok(secs) = num_str.parse::<u64>() {
-                        return Some(secs);
-                    }
-                }
-            }
-        }
-
-        None
-    }
-
     pub fn from_boxed(err: Box<dyn StdError + Send + Sync + 'static>) -> Self {
         match err.downcast::<Error>() {
             Ok(inner) => *inner,
@@ -210,30 +179,145 @@ impl Error {
     }
 }
 
+// --- CONVERSIONS ---
+
 impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Self {
         Error::IO(Box::new(err))
     }
 }
 
-impl From<base64::DecodeError> for Error {
-    fn from(err: base64::DecodeError) -> Self {
-        Error::Generic(format!("Base64 Decode Error: {}", err))
+#[cfg(feature = "http")]
+impl From<reqwest::Error> for Error {
+    fn from(err: reqwest::Error) -> Self {
+        Error::Reqwest(Box::new(err))
     }
 }
 
-#[cfg(feature = "tools")]
-impl<'a> From<scraper::error::SelectorErrorKind<'a>> for Error {
-    fn from(err: scraper::error::SelectorErrorKind<'a>) -> Self {
-        Error::Scraper(format!("Selector Error: {}", err))
+#[cfg(feature = "sql")]
+impl From<sqlx::Error> for Error {
+    fn from(err: sqlx::Error) -> Self {
+        Error::Sqlx(Box::new(err))
     }
 }
 
-#[cfg(feature = "tools")]
+#[cfg(feature = "qdrant")]
+impl From<qdrant_client::QdrantError> for Error {
+    fn from(err: qdrant_client::QdrantError) -> Self {
+        Error::Qdrant(Box::new(err))
+    }
+}
+
+#[cfg(feature = "mongodb")]
+impl From<mongodb::error::Error> for Error {
+    fn from(err: mongodb::error::Error) -> Self {
+        Error::MongoDB(Box::new(err))
+    }
+}
+
+#[cfg(feature = "mongodb")]
+impl From<bson::ser::Error> for Error {
+    fn from(err: bson::ser::Error) -> Self {
+        Error::Bson(Box::new(err))
+    }
+}
+
+#[cfg(feature = "openai")]
+impl From<openai_api_rs::v1::error::APIError> for Error {
+    fn from(err: openai_api_rs::v1::error::APIError) -> Self {
+        Error::OpenAI(Box::new(err))
+    }
+}
+
+#[cfg(feature = "google")]
+impl From<ClientError> for Error {
+    fn from(err: ClientError) -> Self {
+        Error::Gemini(Box::new(err))
+    }
+}
+
+#[cfg(feature = "ollama")]
+impl From<OllamaError> for Error {
+    fn from(err: OllamaError) -> Self {
+        Error::Ollama(Box::new(err))
+    }
+}
+
+#[cfg(any(feature = "hash", feature = "encryption"))]
+impl From<hex::FromHexError> for Error {
+    fn from(err: hex::FromHexError) -> Self {
+        Error::Hex(Box::new(err))
+    }
+}
+
+#[cfg(feature = "search")]
+impl From<regex::Error> for Error {
+    fn from(err: regex::Error) -> Self {
+        Error::Regex(Box::new(err))
+    }
+}
+
+#[cfg(feature = "encryption")]
+impl From<aes_gcm::Error> for Error {
+    fn from(err: aes_gcm::Error) -> Self {
+        Error::Encryption(err.to_string())
+    }
+}
+
+#[cfg(feature = "password")]
 impl From<argon2::password_hash::Error> for Error {
     fn from(err: argon2::password_hash::Error) -> Self {
         Error::Argon2 {
             source: Box::from(err.to_string()),
         }
+    }
+}
+
+#[cfg(feature = "dns")]
+impl From<trust_dns_resolver::error::ResolveError> for Error {
+    fn from(err: trust_dns_resolver::error::ResolveError) -> Self {
+        Error::Dns(Box::new(err))
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(err: serde_json::Error) -> Self {
+        Error::Serde(Box::new(err))
+    }
+}
+
+impl From<url::ParseError> for Error {
+    fn from(err: url::ParseError) -> Self {
+        Error::URL(Box::new(err))
+    }
+}
+
+impl From<tokio::task::JoinError> for Error {
+    fn from(err: tokio::task::JoinError) -> Self {
+        Error::TokioJoin(Box::new(err))
+    }
+}
+
+impl From<Box<dyn StdError + Send + Sync>> for Error {
+    fn from(err: Box<dyn StdError + Send + Sync>) -> Self {
+        Error::Internal(err)
+    }
+}
+
+impl From<base64::DecodeError> for Error {
+    fn from(err: base64::DecodeError) -> Self {
+        Error::Internal(Box::new(err))
+    }
+}
+
+impl From<Box<dyn StdError>> for Error {
+    fn from(err: Box<dyn StdError>) -> Self {
+        Error::Internal(Box::from(err.to_string()))
+    }
+}
+
+impl From<Arc<dyn std::any::Any + std::marker::Send + Sync>> for Error {
+    fn from(err: Arc<dyn std::any::Any + std::marker::Send + Sync>) -> Self {
+        Error::Downcast(err)
     }
 }

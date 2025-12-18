@@ -3,7 +3,7 @@
 //! Tool for evaluating mathematical expressions using meval.
 
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -13,8 +13,6 @@ pub struct MathArgs {
     #[schemars(description = "The mathematical expression to evaluate (e.g., 'sqrt(144) + 2^3').")]
     pub expression: String,
 }
-
-impl ToolArgs for MathArgs {}
 
 #[derive(Clone, Default)]
 pub struct MathTool;

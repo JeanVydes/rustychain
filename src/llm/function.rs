@@ -12,7 +12,6 @@ use schemars::{JsonSchema, Schema};
 use serde::{Deserialize, Serialize, de};
 use serde_json::Value;
 
-// Experimental, this needs more work
 /// Converts a schemars-generated JSON schema Value to OpenAI's FunctionParameters
 fn schema_to_openai_parameters(schema: &Value) -> OpenAIFunctionParameters {
     let properties = schema
@@ -92,16 +91,18 @@ fn value_to_json_schema_define(value: &Value) -> JSONSchemaDefine {
         items,
     }
 }
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionCall {
     pub name: String,
     pub arguments: Value,
+    pub context: Option<String>,
 }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionResult {
     pub name: String,
     pub results: Value,
+    pub context: Option<String>,
 }
 
 impl FunctionCall {
@@ -110,7 +111,7 @@ impl FunctionCall {
         gemini_rust::FunctionCall {
             name: self.name.clone(),
             args: self.arguments.clone(),
-            thought_signature: None,
+            thought_signature: self.context.clone(),
         }
     }
 
@@ -137,6 +138,7 @@ impl FunctionCall {
         FunctionCall {
             name: gemini_call.name,
             arguments: gemini_call.args,
+            context: gemini_call.thought_signature,
         }
     }
 
@@ -145,6 +147,7 @@ impl FunctionCall {
         FunctionCall {
             name: ollama_call.function.name,
             arguments: ollama_call.function.arguments,
+            context: None,
         }
     }
 
@@ -158,11 +161,14 @@ impl FunctionCall {
                 .as_ref()
                 .and_then(|args_str| serde_json::from_str(args_str).ok())
                 .unwrap_or(Value::Null),
+            context: Some(openai_call.id),
         }
     }
 }
 
 pub trait ToolArgs: JsonSchema + Serialize + Send + Sync {}
+
+impl<T> ToolArgs for T where T: JsonSchema + Serialize + Send + Sync {}
 
 #[async_trait::async_trait]
 pub trait FnExecutor<A, R>: Send + Sync
@@ -190,11 +196,11 @@ pub trait AnyFunction: Send + Debug + Sync {
     async fn execute(&self, args: &serde_json::Value) -> crate::Result<serde_json::Value>;
 
     #[cfg(feature = "google")]
-    fn gemini_tool_definition(&self) -> GeminiTool;
+    fn to_google(&self) -> GeminiTool;
     #[cfg(feature = "openai")]
-    fn openai_tool_definition(&self) -> openai_api_rs::v1::chat_completion::Tool;
+    fn to_openai(&self) -> openai_api_rs::v1::chat_completion::Tool;
     #[cfg(feature = "ollama")]
-    fn ollama_tool_definition(&self) -> ollama_rs::generation::tools::ToolInfo;
+    fn to_ollama(&self) -> ollama_rs::generation::tools::ToolInfo;
 }
 
 impl<A, R> From<FunctionDeclaration<A, R>> for Arc<dyn AnyFunction>
@@ -233,7 +239,7 @@ where
     }
 
     #[cfg(feature = "google")]
-    fn gemini_tool_definition(&self) -> GeminiTool {
+    fn to_google(&self) -> GeminiTool {
         GeminiTool::Function {
             function_declarations: vec![
                 GeminiFunctionDeclaration::new(
@@ -248,20 +254,22 @@ where
     }
 
     #[cfg(feature = "openai")]
-    fn openai_tool_definition(&self) -> openai_api_rs::v1::chat_completion::Tool {
+    fn to_openai(&self) -> openai_api_rs::v1::chat_completion::Tool {
         let schema_val = serde_json::to_value(&self.parameters).unwrap_or(Value::Null);
+        let parameters = schema_to_openai_parameters(&schema_val);
+
         openai_api_rs::v1::chat_completion::Tool {
             r#type: openai_api_rs::v1::chat_completion::ToolType::Function,
             function: OpenAIFunction {
                 name: String::from(self.name),
                 description: Some(String::from(self.description)),
-                parameters: schema_to_openai_parameters(&schema_val),
+                parameters,
             },
         }
     }
 
     #[cfg(feature = "ollama")]
-    fn ollama_tool_definition(&self) -> ollama_rs::generation::tools::ToolInfo {
+    fn to_ollama(&self) -> ollama_rs::generation::tools::ToolInfo {
         ollama_rs::generation::tools::ToolInfo {
             tool_type: ollama_rs::generation::tools::ToolType::Function,
             function: ollama_rs::generation::tools::ToolFunctionInfo {
@@ -326,7 +334,6 @@ mod tests {
         b: f64,
         operation: String,
     }
-    impl ToolArgs for CalculatorArgs {}
 
     struct CalcExecutor;
     #[async_trait::async_trait]
@@ -367,6 +374,7 @@ mod tests {
             let call = FunctionCall {
                 name: "get_weather".to_string(),
                 arguments: json!({"location": "London"}),
+                context: None,
             };
 
             let openai_call = call.to_openai();
@@ -414,7 +422,7 @@ mod tests {
     fn test_openai_tool_definition_generation() {
         let decl = declare_function!("test_fn", "test_desc", CalculatorArgs, f64, CalcExecutor);
 
-        let tool = decl.openai_tool_definition();
+        let tool = decl.to_openai();
         assert_eq!(tool.function.name, "test_fn");
         assert_eq!(tool.function.description.unwrap(), "test_desc");
         assert!(tool.function.parameters.properties.is_some());
@@ -425,7 +433,7 @@ mod tests {
     fn test_gemini_tool_definition_generation() {
         let decl = declare_function!("test_fn", "test_desc", CalculatorArgs, f64, CalcExecutor);
 
-        let tool = decl.gemini_tool_definition();
+        let tool = decl.to_google();
         if let GeminiTool::Function {
             function_declarations,
         } = tool
@@ -442,6 +450,7 @@ mod tests {
         let res = FunctionResult {
             name: "calc".to_string(),
             results: json!(42.0),
+            context: None,
         };
         let json_str = serde_json::to_string(&res).unwrap();
         assert!(json_str.contains("\"results\":42.0"));

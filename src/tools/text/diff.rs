@@ -1,6 +1,6 @@
 //! diff
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use similar::{ChangeTag, TextDiff};
@@ -11,8 +11,6 @@ pub struct DiffArgs {
     pub old_text: String,
     pub new_text: String,
 }
-
-impl ToolArgs for DiffArgs {}
 
 #[derive(Clone, Default)]
 pub struct DiffTool;

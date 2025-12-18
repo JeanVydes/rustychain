@@ -3,7 +3,7 @@
 //! Tool for converting and cleaning data between HTML, JSON, and Markdown formats.
 
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use crate::util::formatters::{
     Cleaner, Formatter, html::HtmlFormatter, json::JsonFormatter, markdown::MarkdownFormatter,
     whitespace::WhitespaceFormatter,
@@ -25,8 +25,6 @@ pub struct FormatArgs {
     )]
     pub only_clean: Option<bool>,
 }
-
-impl ToolArgs for FormatArgs {}
 
 #[derive(Clone, Default)]
 pub struct FormatTool;

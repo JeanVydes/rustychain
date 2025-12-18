@@ -13,8 +13,6 @@ pub struct SumArgs {
     pub b: i64,
 }
 
-impl ToolArgs for SumArgs {}
-
 #[derive(Clone)]
 pub struct SumTool {}
 

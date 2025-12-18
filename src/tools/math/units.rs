@@ -4,7 +4,7 @@
 //! Optimized for compiler static sizing requirements.
 
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -17,8 +17,6 @@ pub struct UnitArgs {
     #[schemars(description = "Target unit (e.g., 'gb', 'lb', 'fahrenheit', 'feet', 'minutes')")]
     pub to: String,
 }
-
-impl ToolArgs for UnitArgs {}
 
 #[derive(Clone, Default)]
 pub struct UnitConverterTool;

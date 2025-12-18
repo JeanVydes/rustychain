@@ -2,7 +2,7 @@ use rustychain::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(JsonSchema, Serialize, Deserialize, Debug, Clone, ToolArgs)]
+#[derive(JsonSchema, Serialize, Deserialize, Debug, Clone)]
 pub struct SumArgs {
     #[schemars(description = "First integer to sum.")]
     pub a: i64,

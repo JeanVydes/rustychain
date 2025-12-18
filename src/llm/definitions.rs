@@ -202,7 +202,7 @@ pub struct GenerationConfig {
     pub top_p: f32,
     pub top_k: i32,
     pub max_output_tokens: i32,
-    pub thinking: ThinkingMode,
+    pub thinking_mode: ThinkingMode,
     pub candidate_count: i32,
     pub stop_sequences: Option<Vec<String>>,
     pub output_schema: Option<Schema>,
@@ -237,8 +237,8 @@ impl GenerationConfig {
         self
     }
 
-    pub fn with_thinking(mut self, thinking: ThinkingMode) -> Self {
-        self.thinking = thinking;
+    pub fn with_thinking_mode(mut self, thinking: ThinkingMode) -> Self {
+        self.thinking_mode = thinking;
         self
     }
 
@@ -291,7 +291,7 @@ impl GenerationConfig {
             ToolCallingMode::Any => openai_api_rs::v1::chat_completion::ToolChoiceType::Required,
             ToolCallingMode::Forced(tool) => {
                 openai_api_rs::v1::chat_completion::ToolChoiceType::ToolChoice {
-                    tool: tool.openai_tool_definition(),
+                    tool: tool.to_openai(),
                 }
             }
         }
@@ -305,7 +305,7 @@ impl Default for GenerationConfig {
             top_p: 0.9,
             top_k: 40,
             max_output_tokens: 2048,
-            thinking: ThinkingMode::Dynamic,
+            thinking_mode: ThinkingMode::Dynamic,
             candidate_count: 1,
             stop_sequences: None,
             output_schema: None,
@@ -384,20 +384,18 @@ impl LLM {
             client = client.with_endpoint(endpoint.clone());
         }
 
-        let client = client
-            .build()
-            .map_err(|e| crate::Error::Generic(format!("Failed to build OpenAI client: {}", e)))?;
+        let client = client.build()?;
 
         Ok(client)
     }
 
     /// Adds a single tool to the LLM.
-    pub fn add_tool(&mut self, tool: Arc<dyn AnyFunction>) {
+    pub fn add_tool(&mut self, tool: Arc<impl AnyFunction + 'static>) {
         self.tools.push(tool);
     }
 
     /// Adds multiple tools to the LLM.
-    pub fn add_tools(&mut self, tools: Vec<Arc<dyn AnyFunction>>) {
+    pub fn add_tools(&mut self, tools: Vec<Arc<impl AnyFunction + 'static>>) {
         for tool in tools {
             self.tools.push(tool);
         }
@@ -446,16 +444,16 @@ impl LLM {
         history.push(inference.to_gemini_message());
         let mut req = client
             .generate_content()
-            .with_system_instruction(self.system_prompt.clone())
+            .with_system_prompt(self.system_prompt.clone())
             .with_messages(history.clone())
-            .with_thinking_budget(config.thinking.to_google())
+            .with_thinking_budget(config.thinking_mode.to_google())
             .with_generation_config(GeminiGenerationConfig {
                 temperature: Some(config.temperature),
                 top_p: Some(config.top_p),
                 top_k: Some(config.top_k),
                 max_output_tokens: Some(config.max_output_tokens),
                 thinking_config: Some(ThinkingConfig {
-                    thinking_budget: Some(config.thinking.to_google()),
+                    thinking_budget: Some(config.thinking_mode.to_google()),
                     include_thoughts: Some(config.include_thoughts),
                 }),
                 candidate_count: Some(config.candidate_count),
@@ -474,7 +472,7 @@ impl LLM {
         }
 
         for tool in &self.tools {
-            req = req.with_tool(tool.gemini_tool_definition());
+            req = req.with_tool(tool.to_google());
         }
 
         Ok(req)
@@ -500,23 +498,22 @@ impl LLM {
                 tool_call_id: None,
             });
         }
-        messages.extend(history.iter().map(|m| m.to_openai_message()));
-        messages.push(inference.to_openai_message());
+
+        for m in history {
+            messages.push(m.to_openai_message()?);
+        }
+
+        messages.push(inference.to_openai_message()?);
 
         let mut req = ChatCompletionRequest::new(self.model.clone(), messages)
             .max_tokens(config.max_output_tokens as i64)
             .temperature(config.temperature as f64)
             .top_p(config.top_p as f64)
             .n(config.candidate_count as i64)
-            .tools(
-                self.tools
-                    .iter()
-                    .map(|t| t.openai_tool_definition())
-                    .collect(),
-            )
+            .tools(self.tools.iter().map(|t| t.to_openai()).collect())
             .tool_choice(config.to_openai_tool_calling_mode());
 
-        if let Some(reasoning) = config.thinking.to_openai() {
+        if let Some(reasoning) = config.thinking_mode.to_openai() {
             req = req.reasoning(reasoning);
         }
 
@@ -551,23 +548,22 @@ impl LLM {
                 tool_call_id: None,
             });
         }
-        messages.extend(history.iter().map(|m| m.to_openai_message()));
-        messages.push(inference.to_openai_message());
+
+        for m in history {
+            messages.push(m.to_openai_message()?);
+        }
+
+        messages.push(inference.to_openai_message()?);
 
         let mut req = ChatCompletionStreamRequest::new(self.model.clone(), messages)
             .max_tokens(config.max_output_tokens as i64)
             .temperature(config.temperature as f64)
             .top_p(config.top_p as f64)
             .n(config.candidate_count as i64)
-            .tools(
-                self.tools
-                    .iter()
-                    .map(|t| t.openai_tool_definition())
-                    .collect(),
-            )
+            .tools(self.tools.iter().map(|t| t.to_openai()).collect())
             .tool_choice(config.to_openai_tool_calling_mode());
 
-        if let Some(reasoning) = config.thinking.to_openai() {
+        if let Some(reasoning) = config.thinking_mode.to_openai() {
             req = req.reasoning(reasoning);
         }
 
@@ -596,13 +592,8 @@ impl LLM {
         ollama_messages.push(inference.to_ollama_message());
 
         let mut req = ChatMessageRequest::new(self.model.clone(), ollama_messages)
-            .think(config.thinking.to_ollama())
-            .tools(
-                self.tools
-                    .iter()
-                    .map(|t| t.ollama_tool_definition())
-                    .collect(),
-            )
+            .think(config.thinking_mode.to_ollama())
+            .tools(self.tools.iter().map(|t| t.to_ollama()).collect())
             .options(
                 ModelOptions::default()
                     .top_k(config.top_k as u32)
@@ -625,71 +616,14 @@ impl LLM {
 
 #[cfg(test)]
 mod tests {
+    use rustychain_macros::declare_function;
+
+    use crate::FnDeclarator;
+
     use super::*;
-    use crate::llm::function::AnyFunction;
-    use serde_json::json;
     use std::sync::Arc;
 
     // --- Mocks ---
-
-    #[derive(Debug)]
-    struct MockTool {
-        name: String,
-    }
-
-    #[async_trait::async_trait]
-    impl AnyFunction for MockTool {
-        fn name(&self) -> &str {
-            &self.name
-        }
-        fn description(&self) -> &str {
-            "mock description"
-        }
-        fn parameters_schema(&self) -> &schemars::Schema {
-            lazy_static::lazy_static! {
-                static ref SCHEMA: schemars::Schema = schemars::schema_for!(i32);
-            }
-            &SCHEMA
-        }
-        async fn execute(&self, _args: &serde_json::Value) -> crate::Result<serde_json::Value> {
-            Ok(json!({"status": "ok"}))
-        }
-
-        #[cfg(feature = "google")]
-        fn gemini_tool_definition(&self) -> gemini_rust::Tool {
-            gemini_rust::Tool::Function {
-                function_declarations: vec![],
-            }
-        }
-
-        #[cfg(feature = "openai")]
-        fn openai_tool_definition(&self) -> openai_api_rs::v1::chat_completion::Tool {
-            openai_api_rs::v1::chat_completion::Tool {
-                r#type: openai_api_rs::v1::chat_completion::ToolType::Function,
-                function: openai_api_rs::v1::types::Function {
-                    name: self.name.clone(),
-                    description: None,
-                    parameters: openai_api_rs::v1::types::FunctionParameters {
-                        schema_type: openai_api_rs::v1::types::JSONSchemaType::Object,
-                        properties: None,
-                        required: None,
-                    },
-                },
-            }
-        }
-
-        #[cfg(feature = "ollama")]
-        fn ollama_tool_definition(&self) -> ollama_rs::generation::tools::ToolInfo {
-            ollama_rs::generation::tools::ToolInfo {
-                tool_type: ollama_rs::generation::tools::ToolType::Function,
-                function: ollama_rs::generation::tools::ToolFunctionInfo {
-                    name: self.name.clone(),
-                    description: "".into(),
-                    parameters: schemars::schema_for!(i32),
-                },
-            }
-        }
-    }
 
     fn create_test_llm(provider: LLMProvider) -> LLM {
         LLM {
@@ -704,14 +638,26 @@ mod tests {
 
     // --- Core LLM Logic Tests ---
 
+    #[declare_function(
+            name = "sum_integers",
+            description = "Returns the sum of two integers.",
+            args = String,
+            result = String
+        )]
+    struct MockTool {}
+
+    impl MockTool {
+        pub async fn execute(&self, args: String) -> rustychain::Result<String> {
+            Ok(args)
+        }
+    }
+
     #[test]
     fn test_tool_registry_management() {
         let mut llm = create_test_llm(LLMProvider::OpenAI);
         let tool_name = "weather_api";
 
-        llm.add_tool(Arc::new(MockTool {
-            name: tool_name.into(),
-        }));
+        llm.add_tool(Arc::new(MockTool {}.declare()));
 
         assert!(llm.exists_tool(tool_name));
         assert!(llm.get_tool(tool_name).is_some());
@@ -723,11 +669,11 @@ mod tests {
     fn test_generation_config_builder_flow() {
         let config = GenerationConfig::default()
             .with_temperature(0.7)
-            .with_thinking(ThinkingMode::Sized(500))
+            .with_thinking_mode(ThinkingMode::Sized(500))
             .with_stop_sequences(vec!["\n".into()]);
 
         assert_eq!(config.temperature, 0.7);
-        assert!(matches!(config.thinking, ThinkingMode::Sized(500)));
+        assert!(matches!(config.thinking_mode, ThinkingMode::Sized(500)));
         assert_eq!(config.stop_sequences.unwrap()[0], "\n");
     }
 
@@ -739,9 +685,7 @@ mod tests {
         use crate::{Role, inference::InferenceContent};
 
         let mut llm = create_test_llm(LLMProvider::OpenAI);
-        llm.add_tool(Arc::new(MockTool {
-            name: "test_tool".into(),
-        }));
+        llm.add_tool(Arc::new(MockTool {}.declare()));
 
         let history = vec![];
         let inference = Inference {
@@ -769,7 +713,8 @@ mod tests {
         let inference = Inference::default();
 
         // Test sized budget
-        let config_sized = GenerationConfig::default().with_thinking(ThinkingMode::Sized(1024));
+        let config_sized =
+            GenerationConfig::default().with_thinking_mode(ThinkingMode::Sized(1024));
         let _req_sized = llm
             .new_google_request(&history, &inference, config_sized)
             .unwrap();
@@ -783,8 +728,8 @@ mod tests {
     #[test]
     fn test_ollama_request_composition() {
         let llm = create_test_llm(LLMProvider::Ollama);
-        let config =
-            GenerationConfig::default().with_thinking(ThinkingMode::Effort(ThinkingEffort::High));
+        let config = GenerationConfig::default()
+            .with_thinking_mode(ThinkingMode::Effort(ThinkingEffort::High));
 
         let req = llm
             .new_ollama_request(&[], &Inference::default(), config)

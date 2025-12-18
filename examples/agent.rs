@@ -44,7 +44,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .build();
 
     let mut step_count = 0;
-    
+
     while step_count <= 20 {
         let step = match agent.next().await {
             Some(s) => s,

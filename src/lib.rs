@@ -1,6 +1,7 @@
 //! RustyChain: A modular framework for building LLM-powered applications in Rust.
 //! This crate provides core functionalities, including LLM integration, tool management,
 //! document splitting, and vector storage.
+extern crate self as rustychain;
 
 #[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
 pub mod agent;

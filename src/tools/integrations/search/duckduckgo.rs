@@ -46,7 +46,7 @@ use crate::tools::integrations::search::definitions::{
 
 use crate::{
     FnDeclarator, FunctionDeclaration,
-    llm::function::{FnExecutor, ToolArgs},
+    llm::function::FnExecutor,
     memory::lru::LRUCache,
     util::{UrlValidator, UserAgentFactory},
 };
@@ -133,8 +133,6 @@ impl DuckDuckGoSearchArgs {
         Ok(())
     }
 }
-
-impl ToolArgs for DuckDuckGoSearchArgs {}
 
 /// Response from a DuckDuckGo search
 #[derive(Debug, Clone, Serialize, Deserialize)]

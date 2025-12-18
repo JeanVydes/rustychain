@@ -1,5 +1,5 @@
 //! argon2
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use crate::{BASE64_ENGINE, FunctionDeclaration};
 use argon2::password_hash::Salt;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
@@ -18,8 +18,6 @@ pub struct ArgonArgs {
     #[schemars(description = "The previously generated hash string (required for 'verify')")]
     pub encoded_hash: Option<String>,
 }
-
-impl ToolArgs for ArgonArgs {}
 
 #[derive(Clone, Default)]
 pub struct ArgonTool;

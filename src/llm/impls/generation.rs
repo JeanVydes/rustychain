@@ -13,14 +13,13 @@ impl LLMGeneration for LLM {
         match self.provider {
             #[cfg(feature = "google")]
             LLMProvider::Google => {
-                use crate::Error;
-
                 let req = self.new_google_request(history, inference, config)?;
                 match req.execute().await {
                     Ok(res) => Ok(Inference::from_gemini_response(res)),
-                    Err(err) => Err(Error::Gemini(err)),
+                    Err(err) => Err(crate::Error::from(err)),
                 }
             }
+
             #[cfg(feature = "openai")]
             LLMProvider::OpenAI => {
                 let mut client = self.get_openai_client()?;

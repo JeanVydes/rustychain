@@ -52,14 +52,8 @@ impl StepResult {
         I: Send + Sync + 'static,
         O: Send + Sync + 'static,
     {
-        let input = self
-            .input
-            .downcast::<I>()
-            .map_err(|_| crate::Error::Internal("Failed to downcast input".into()))?;
-        let output = self
-            .output
-            .downcast::<O>()
-            .map_err(|_| crate::Error::Internal("Failed to downcast output".into()))?;
+        let input = self.input.downcast::<I>()?;
+        let output = self.output.downcast::<O>()?;
         Ok(TypedStepResult {
             index: self.index,
             name: self.name,

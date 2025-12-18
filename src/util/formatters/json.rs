@@ -7,11 +7,9 @@ impl Formatter for JsonFormatter {
     /// Convert JSON to a Markdown code block
     fn to_markdown(json_str: &str) -> crate::Result<String> {
         // Validate and prettify the JSON first to ensure it is readable in Markdown
-        let value: Value = serde_json::from_str(json_str)
-            .map_err(|e| crate::Error::Input(format!("Invalid JSON input: {}", e)))?;
+        let value: Value = serde_json::from_str(json_str)?;
 
-        let pretty_json = serde_json::to_string_pretty(&value)
-            .map_err(|e| crate::Error::Input(format!("Failed to serialize JSON: {}", e)))?;
+        let pretty_json = serde_json::to_string_pretty(&value)?;
 
         Ok(format!("```json\n{}\n```", pretty_json))
     }
@@ -31,11 +29,9 @@ impl Formatter for JsonFormatter {
     /// Convert JSON to an HTML syntax-highlighted code block
     fn to_html(json_str: &str) -> crate::Result<String> {
         // Validate and prettify
-        let value: Value = serde_json::from_str(json_str)
-            .map_err(|e| crate::Error::Input(format!("Invalid JSON input: {}", e)))?;
+        let value: Value = serde_json::from_str(json_str)?;
 
-        let pretty_json = serde_json::to_string_pretty(&value)
-            .map_err(|e| crate::Error::Input(format!("Failed to serialize JSON: {}", e)))?;
+        let pretty_json = serde_json::to_string_pretty(&value)?;
 
         // Simple HTML escaping for the content within the code block
         let escaped_json = pretty_json
@@ -65,19 +61,15 @@ impl Formatter for JsonFormatter {
 
     /// Format JSON to Pretty Print JSON (Identity transformation with formatting)
     fn to_json(text: &str) -> crate::Result<String> {
-        let value: Value = serde_json::from_str(text)
-            .map_err(|e| crate::Error::Input(format!("Invalid JSON input: {}", e)))?;
+        let value: Value = serde_json::from_str(text)?;
 
-        serde_json::to_string_pretty(&value)
-            .map_err(|e| crate::Error::Input(format!("Failed to format JSON: {}", e)))
+        Ok(serde_json::to_string_pretty(&value)?)
     }
 
     /// Minify JSON (Identity transformation removing whitespace)
     fn from_json(text: &str) -> crate::Result<String> {
-        let value: Value = serde_json::from_str(text)
-            .map_err(|e| crate::Error::Input(format!("Invalid JSON input: {}", e)))?;
+        let value: Value = serde_json::from_str(text)?;
 
-        serde_json::to_string(&value)
-            .map_err(|e| crate::Error::Input(format!("Failed to minify JSON: {}", e)))
+        Ok(serde_json::to_string(&value)?)
     }
 }

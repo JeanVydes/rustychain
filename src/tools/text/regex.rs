@@ -1,6 +1,6 @@
 //! regex
 use crate::FunctionDeclaration;
-use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::llm::function::{FnDeclarator, FnExecutor};
 use regex::Regex;
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -17,8 +17,6 @@ pub struct RegexArgs {
     pub replacement: Option<String>,
 }
 
-impl ToolArgs for RegexArgs {}
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RegexMatch {
     pub full_match: String,
@@ -33,8 +31,7 @@ pub struct RegexTool;
 #[async_trait::async_trait]
 impl FnExecutor<RegexArgs, serde_json::Value> for RegexTool {
     async fn call(&self, args: RegexArgs) -> crate::Result<serde_json::Value> {
-        let re = Regex::new(&args.pattern)
-            .map_err(|e| crate::Error::Input(format!("Invalid regex pattern: {}", e)))?;
+        let re = Regex::new(&args.pattern)?;
 
         match args.action.to_lowercase().as_str() {
             "find" => {

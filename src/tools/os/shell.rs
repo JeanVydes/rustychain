@@ -3,7 +3,7 @@
 //! Allows agents to execute shell commands with full interactive support,
 //! including handling of password prompts, confirmations, and user input.
 
-use crate::llm::function::{FnExecutor, ToolArgs};
+use crate::llm::function::FnExecutor;
 use crate::{FnDeclarator, FunctionDeclaration};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -137,8 +137,6 @@ pub struct CommandArgs {
 fn default_timeout() -> u64 {
     300
 }
-
-impl ToolArgs for CommandArgs {}
 
 /// Result of a command execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -576,12 +574,7 @@ impl FnExecutor<CommandArgs, serde_json::Value> for CommandTool {
         // Handle background execution
         if args.background {
             let mut cmd = self.build_command(&args);
-            let child = cmd.spawn().map_err(|e| {
-                crate::Error::Generic(format!(
-                    "Failed to spawn background command '{}': {}",
-                    args.command, e
-                ))
-            })?;
+            let child = cmd.spawn()?;
 
             let pid = child.id();
             log::debug!("Started background process with PID: {:?}", pid);
@@ -660,8 +653,6 @@ pub struct SignalArgs {
     pub signal: String,
 }
 
-impl ToolArgs for SignalArgs {}
-
 /// Tool for sending signals to processes.
 #[derive(Clone, Default)]
 pub struct SignalTool {}
@@ -693,10 +684,7 @@ impl FnExecutor<SignalArgs, serde_json::Value> for SignalTool {
             let output = std::process::Command::new("kill")
                 .arg(format!("-{}", signal_num))
                 .arg(args.pid.to_string())
-                .output()
-                .map_err(|e| {
-                    crate::Error::Generic(format!("Failed to execute kill command: {}", e))
-                })?;
+                .output()?;
 
             if output.status.success() {
                 Ok(serde_json::json!({
