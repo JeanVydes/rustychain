@@ -94,6 +94,7 @@ fn test_inference_with_config() {
         output_schema: None,
         response_mime_type: None,
         tool_calling_mode: ToolCallingMode::Auto,
+        include_thoughts: true,
     };
 
     let llm = dummy_llm();
@@ -135,6 +136,7 @@ fn test_inference_chained_building() {
             output_schema: None,
             response_mime_type: None,
             tool_calling_mode: ToolCallingMode::Auto,
+            include_thoughts: false,
         });
 
     assert_eq!(inf.history.len(), 1);
@@ -170,6 +172,7 @@ fn test_generation_config_with_values() {
         output_schema: None,
         response_mime_type: None,
         tool_calling_mode: ToolCallingMode::Auto,
+        include_thoughts: false,
     };
 
     assert_eq!(config.temperature, 0.8);
@@ -255,6 +258,7 @@ fn test_inference_with_llm_config_compatibility() {
         output_schema: None,
         response_mime_type: None,
         tool_calling_mode: ToolCallingMode::Auto,
+        include_thoughts: false,
     };
 
     let llm = dummy_llm();
@@ -355,6 +359,7 @@ fn test_inference_building_is_idempotent() {
         output_schema: None,
         response_mime_type: None,
         tool_calling_mode: ToolCallingMode::Auto,
+        include_thoughts: false,
     };
 
     // Build multiple times with same input
@@ -392,6 +397,7 @@ fn test_generation_config_clone() {
         output_schema: None,
         response_mime_type: None,
         tool_calling_mode: ToolCallingMode::Auto,
+        include_thoughts: false,
     };
 
     let cloned = config.clone();
@@ -415,6 +421,7 @@ fn test_generation_config_debug() {
         output_schema: None,
         response_mime_type: None,
         tool_calling_mode: ToolCallingMode::Auto,
+        include_thoughts: false,
     };
 
     let debug = format!("{:?}", config);

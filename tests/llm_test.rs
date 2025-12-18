@@ -249,6 +249,7 @@ fn test_inference_creation_for_llm() {
             output_schema: None,
             response_mime_type: None,
             tool_calling_mode: ToolCallingMode::Auto,
+            include_thoughts: false,
         });
 
     // Inference should be compatible with any LLM

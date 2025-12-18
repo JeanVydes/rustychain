@@ -208,6 +208,7 @@ pub struct GenerationConfig {
     pub output_schema: Option<Schema>,
     pub response_mime_type: Option<String>,
     pub tool_calling_mode: ToolCallingMode,
+    pub include_thoughts: bool,
 }
 
 impl GenerationConfig {
@@ -305,6 +306,7 @@ impl Default for GenerationConfig {
             output_schema: None,
             response_mime_type: None,
             tool_calling_mode: ToolCallingMode::Auto,
+            include_thoughts: false,
         }
     }
 }
@@ -449,7 +451,7 @@ impl LLM {
                 max_output_tokens: Some(config.max_output_tokens),
                 thinking_config: Some(ThinkingConfig {
                     thinking_budget: Some(config.thinking.to_google()),
-                    include_thoughts: Some(true),
+                    include_thoughts: Some(config.include_thoughts),
                 }),
                 candidate_count: Some(config.candidate_count),
                 ..Default::default()
