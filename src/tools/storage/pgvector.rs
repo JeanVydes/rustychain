@@ -76,6 +76,18 @@ impl PgVectorRetrievalTool {
         })
     }
 
+    pub async fn from_vector_store(
+        store: Arc<Mutex<dyn VectorStore>>,
+        llm: Arc<LLM>,
+        table_name: Option<String>,
+    ) -> crate::Result<Self> {
+        Ok(Self {
+            store,
+            llm,
+            table_name,
+        })
+    }
+
     pub fn with_table_name(mut self, table_name: impl Into<String>) -> Self {
         self.table_name = Some(table_name.into());
         self
@@ -109,6 +121,18 @@ impl PgVectorAugmentedTool {
             store: Arc::new(Mutex::new(store)),
             llm,
             table_name: None,
+        })
+    }
+
+    pub async fn from_vector_store(
+        store: Arc<Mutex<dyn VectorStore>>,
+        llm: Arc<LLM>,
+        table_name: Option<String>,
+    ) -> crate::Result<Self> {
+        Ok(Self {
+            store,
+            llm,
+            table_name,
         })
     }
 
