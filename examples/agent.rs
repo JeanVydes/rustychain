@@ -44,29 +44,48 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .build();
 
     let mut step_count = 0;
-    while let Some(step) = agent.next().await
-        && step_count <= 20
-    {
+    
+    while step_count <= 20 {
+        let step = match agent.next().await {
+            Some(s) => s,
+            None => break, // No more work to do
+        };
+
         step_count += 1;
-        if let Ok(step_result) = step {
-            match step_result {
-                AgentStep::Finished(inference) => {
-                    // you should update the history here to append the final response
-                    {
-                        let mut history = agent.history.lock().await;
-                        history.push(inference.clone());
+
+        match step {
+            Ok(step_result) => {
+                match step_result {
+                    AgentStep::Finished(inference) => {
+                        // Manual update for the final conclusion
+                        {
+                            let mut history = agent.history.lock().await;
+                            history.push(inference.clone());
+                        }
+
+                        log::info!("🏆 Task completed in {} steps.", step_count);
+                        // Access the actual content of the inference
+                        if let Some(content) = inference.content.text {
+                            println!("\nFinal Answer:\n{}", content);
+                        }
+                        break;
                     }
-                    log::info!("🏆 Agent has completed its task in {} steps.", step_count);
-                }
-                AgentStep::ToolReturn(inference) => {
-                    // the history is updated inside the agent when tools are called
-                    for result_calls in inference.function_results {
-                        log::info!("🛠 Tool Result: {}", result_calls.results);
+                    AgentStep::ToolReturn(inference) => {
+                        // History was already updated inside agent.next()
+                        for result in inference.function_results {
+                            log::info!(
+                                "🛠 Tool [{}] returned data (Length: {} chars)",
+                                result.name,
+                                result.results.to_string().len()
+                            );
+                        }
                     }
                 }
             }
-        } else {
-            log::error!("❌ Error during agent step: {}", step.err().unwrap());
+            Err(e) => {
+                log::error!("❌ Error during agent step: {:?}", e);
+                break;
+            }
         }
     }
     Ok(())
