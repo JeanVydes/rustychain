@@ -28,13 +28,27 @@ impl Agent {
         AgentBuilder::new(llm)
     }
 
+    // Runs the agent until it finishes or reaches max depth
+    // The history is updated only when tools are called
+    // So the user have to manage the past history outside and also the last inference
+    // The initial inference is added to the history
     pub async fn run(&self, initial: Inference) -> crate::Result<Inference> {
         let mut current = initial;
+
+        {
+            let mut history = self.history.lock().await;
+            history.push(current.clone());
+        }
 
         for _ in 0..self.max_depth {
             match self.step(current.clone()).await? {
                 AgentStep::Finished(response) => return Ok(response),
                 AgentStep::ToolReturn(result_inference) => {
+                    {
+                        let mut history = self.history.lock().await;
+                        history.push(result_inference.clone());
+                    }
+
                     current = result_inference;
                 }
             }
@@ -43,6 +57,11 @@ impl Agent {
         Err(crate::Error::MaxDepthReached)
     }
 
+    // Advances the agent by one step
+    // Returns None if the agent has finished
+    // Otherwise returns the next AgentStep
+    // The history is not updated here
+    // The decision to update the history is left to the caller
     pub async fn next(&mut self) -> Option<crate::Result<AgentStep>> {
         let inference = self.current.take()?;
         let step = match self.step(inference).await {
@@ -50,6 +69,8 @@ impl Agent {
             Err(e) => return Some(Err(e)),
         };
 
+        // Update the current inference based on the step result
+        // If the agent is finished, set current to None, so the next call to next() will return None due to the .take() above
         self.current = match &step {
             AgentStep::Finished(_) => None,
             AgentStep::ToolReturn(inf) => Some(inf.clone()),
@@ -59,25 +80,18 @@ impl Agent {
     }
 
     pub async fn step(&self, inference: Inference) -> crate::Result<AgentStep> {
-        let history_context = {
-            let mut history = self.history.lock().await;
-            if inference.content.role != Role::Tool {
-                history.push(inference.clone());
-            }
-            history.clone()
-        };
+        let history_snapshot = self.history.lock().await;
 
-        let mut req = self.llm.inference(inference).with_history(&history_context);
+        let mut req = self
+            .llm
+            .inference(inference)
+            .with_history(&history_snapshot);
 
         if let Some(config) = &self.generation_config {
             req = req.with_config(config.clone());
         }
 
         let response = req.generate().await?;
-        {
-            let mut history = self.history.lock().await;
-            history.push(response.clone());
-        }
 
         if let Some(reason) = &response.finish_reason {
             match reason {
@@ -85,6 +99,12 @@ impl Agent {
                     return Ok(AgentStep::ToolReturn(Inference::with_content(
                         Role::User,
                         "Agent attempted to call a tool unexpectedly.".to_owned(),
+                    )));
+                }
+                FinishReason::MalformedFunctionCall => {
+                    return Ok(AgentStep::ToolReturn(Inference::with_content(
+                        Role::User,
+                        "Agent made a malformed function call.".to_owned(),
                     )));
                 }
                 FinishReason::TooManyToolCalls => {
@@ -153,11 +173,6 @@ impl Agent {
         }
 
         let tool_msg = Inference::with_function_results(tool_results);
-        {
-            let mut history = self.history.lock().await;
-            history.push(tool_msg.clone());
-        }
-
         Ok(AgentStep::ToolReturn(tool_msg))
     }
 }
