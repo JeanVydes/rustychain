@@ -10,7 +10,7 @@ documentation = "https://docs.rs/rustychain"
 readme = "README.md"
 keywords = ["llm", "ai", "agent"]
 categories = ["api-bindings", "asynchronous", "database"]
-authors = ["Jean Vydes <j@lojur.com>"]
+authors = ["Jean Vides <j@lojur.com>"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -85,6 +85,8 @@ google = ["gemini-rust"]
 ollama = ["ollama-rs"]
 anthropic = []
 tools = [
+    # pgvector tool requires postgres feature
+    "postgres",
     "reqwest",
     "urlencoding",
     "chrono",
@@ -103,7 +105,7 @@ providers = ["openai", "google", "ollama"]
 experimental = ["audio"]
 macros = ["rustychain-macros"]
 essential = ["default", "providers", "macros"]
-full = ["default", "postgres", "providers", "tools", "macros"]
+full = ["default", "providers", "macros", "tools"]
 
 [dev-dependencies]
 testcontainers = "0.26.0"
@@ -121,36 +123,46 @@ name = "vector_store"
 harness = false
 
 [[example]]
+name = "agent"
+path = "examples/agent.rs"
+required-features = ["full"]
+
+[[example]]
 name = "basic"
 path = "examples/basic.rs"
-required-features = ["providers"]
+required-features = ["essential"]
 
 [[example]]
 name = "chain"
 path = "examples/chain.rs"
-required-features = ["providers", "macros"]
-
-[[example]]
-name = "embedding"
-path = "examples/embedding.rs"
-required-features = ["providers", "postgres", "macros"]
-
-[[example]]
-name = "streaming"
-path = "examples/streaming.rs"
-required-features = ["providers"]
-
-[[example]]
-name = "tools"
-path = "examples/tools.rs"
-required-features = ["tools"]
+required-features = ["essential"]
 
 [[example]]
 name = "custom_tool"
 path = "examples/custom_tool.rs"
-required-features = ["tools", "macros", "providers"]
+required-features = ["essential"]
+
+[[example]]
+name = "embedding"
+path = "examples/embedding.rs"
+required-features = ["essential"]
 
 [[example]]
 name = "full_custom_tools"
 path = "examples/full_custom_tools.rs"
-required-features = ["tools", "macros", "providers"]
+required-features = ["full"]
+
+[[example]]
+name = "inference"
+path = "examples/inference.rs"
+required-features = ["essential"]
+
+[[example]]
+name = "streaming"
+path = "examples/streaming.rs"
+required-features = ["essential"]
+
+[[example]]
+name = "tools"
+path = "examples/tools.rs"
+required-features = ["full"]

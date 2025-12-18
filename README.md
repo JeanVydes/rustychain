@@ -1,6 +1,6 @@
 # RustyChain
 
-A high-performance, type-safe Rust library for building LLM-powered applications.
+A high-performance, type-safe Rust library for building LLM-powered applications, chains, and agents.
 
 ## Installation
 
@@ -14,7 +14,35 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-rustychain = "0.0.1"
+rustychain = { version = "0.0.1", features = ["essential"] }
+```
+
+or get the latest version from GitHub:
+
+```toml
+[dependencies]
+rustychain = { git = "https://github.com/JeanVydes/rustychain", branch = "main", features = ["essential"] }
+``` 
+
+## Start
+
+```rust
+use rustychain::{LLM, LLMProvider};
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let llm = LLM::builder()
+        .set_authorization("my-api-key")
+        .set_model("gemini-2.5-flash")
+        .set_provider(LLMProvider::Google)
+        .set_system_prompt("You are a helpful assistant.")
+        .build()?;
+
+    let response = llm.inference("Hello, how are you?").generate().await?;
+    println!("LLM response: {}", response);
+
+    Ok(())
+}
 ```
 
 ## Benchmarks

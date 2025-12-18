@@ -17,7 +17,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .build()?;
 
     let response = llm.inference("Hello, how are you?").generate().await?;
-
+    
     log::info!("Response: {}", response);
 
     Ok(())
