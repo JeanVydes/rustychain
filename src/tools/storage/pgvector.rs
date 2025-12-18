@@ -5,6 +5,7 @@
 
 use crate::llm::LLM;
 use crate::llm::function::{FnDeclarator, FnExecutor, ToolArgs};
+use crate::persistent::pgvector::PgVectorStore;
 use crate::{FunctionDeclaration, RecursiveCharacterTextSplitter, TextSplitter};
 use crate::{SearchOptions, VectorStore, prelude::*};
 use schemars::{JsonSchema, schema_for};
@@ -52,11 +53,69 @@ pub struct PgVectorRetrievalTool {
     pub table_name: Option<String>,
 }
 
+impl PgVectorRetrievalTool {
+    pub fn new(
+        store: Arc<Mutex<dyn VectorStore>>,
+        llm: Arc<LLM>,
+        table_name: Option<String>,
+    ) -> Self {
+        Self {
+            store,
+            llm,
+            table_name,
+        }
+    }
+
+    pub async fn from_url(database_url: &str, llm: Arc<LLM>) -> crate::Result<Self> {
+        let store = PgVectorStore::new(database_url, None, None).await?;
+
+        Ok(Self {
+            store: Arc::new(Mutex::new(store)),
+            llm,
+            table_name: None,
+        })
+    }
+
+    pub fn with_table_name(mut self, table_name: impl Into<String>) -> Self {
+        self.table_name = Some(table_name.into());
+        self
+    }
+}
+
 #[derive(Clone)]
 pub struct PgVectorAugmentedTool {
     pub store: Arc<Mutex<dyn VectorStore>>,
     pub llm: Arc<LLM>,
     pub table_name: Option<String>,
+}
+
+impl PgVectorAugmentedTool {
+    pub fn new(
+        store: Arc<Mutex<dyn VectorStore>>,
+        llm: Arc<LLM>,
+        table_name: Option<String>,
+    ) -> Self {
+        Self {
+            store,
+            llm,
+            table_name,
+        }
+    }
+
+    pub async fn from_url(database_url: &str, llm: Arc<LLM>) -> crate::Result<Self> {
+        let store = PgVectorStore::new(database_url, None, None).await?;
+
+        Ok(Self {
+            store: Arc::new(Mutex::new(store)),
+            llm,
+            table_name: None,
+        })
+    }
+
+    pub fn with_table_name(mut self, table_name: impl Into<String>) -> Self {
+        self.table_name = Some(table_name.into());
+        self
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
