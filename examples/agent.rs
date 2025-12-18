@@ -4,6 +4,7 @@ use rustychain::tools::scraping::ScrappingTool;
 use rustychain::{GenerationConfig, Inference, prelude::*};
 use rustychain::{LLM, LLMProvider};
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -33,9 +34,12 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .build()?,
     );
 
+    let history = Arc::new(Mutex::new(Vec::new()));
+
     let mut agent = Agent::builder(llm)
         .name("BiographicalResearchAgent".to_owned())
         .generation_config(GenerationConfig::default())
+        .history(history)
         .initial(Inference::as_user("Research about the Pibe Valderrama"))
         .build();
 
@@ -44,17 +48,25 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         && step_count <= 20
     {
         step_count += 1;
-        if let Ok(step) = step {
-            match step {
-                AgentStep::Finished(_) => {
+        if let Ok(step_result) = step {
+            match step_result {
+                AgentStep::Finished(inference) => {
+                    // you should update the history here to append the final response
+                    {
+                        let mut history = agent.history.lock().await;
+                        history.push(inference.clone());
+                    }
                     log::info!("🏆 Agent has completed its task in {} steps.", step_count);
                 }
-                AgentStep::ToolReturn(message) => {
-                    for result in message.function_results {
-                        log::info!("🛠 Tool Result: {}", result.results);
+                AgentStep::ToolReturn(inference) => {
+                    // the history is updated inside the agent when tools are called
+                    for result_calls in inference.function_results {
+                        log::info!("🛠 Tool Result: {}", result_calls.results);
                     }
                 }
             }
+        } else {
+            log::error!("❌ Error during agent step: {}", step.err().unwrap());
         }
     }
     Ok(())
