@@ -267,6 +267,11 @@ impl GenerationConfig {
         self
     }
 
+    pub fn with_include_thoughts(mut self, include: bool) -> Self {
+        self.include_thoughts = include;
+        self
+    }
+
     #[cfg(feature = "google")]
     pub fn to_google_tool_calling_mode(&self) -> FunctionCallingMode {
         match self.tool_calling_mode {
