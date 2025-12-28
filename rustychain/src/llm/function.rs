@@ -361,6 +361,30 @@ where
     pub executor: Arc<dyn FnExecutor<A, R>>,
 }
 
+impl<T, U> FunctionDeclaration<T, U>
+where
+    T: Debug + ToolArgs + Serialize + de::DeserializeOwned + 'static,
+    U: Serialize + Send + Sync + 'static,
+{
+    pub fn new(
+        name: &'static str,
+        description: &'static str,
+        executor: Arc<dyn FnExecutor<T, U>>,
+    ) -> Self {
+        let schema = schemars::schema_for!(T);
+        Self {
+            name,
+            description,
+            parameters: schema,
+            executor,
+        }
+    }
+
+    pub fn into_any(self) -> Arc<dyn AnyFunction> {
+        Arc::new(self)
+    }
+}
+
 impl<A, R> Debug for FunctionDeclaration<A, R>
 where
     A: ToolArgs,

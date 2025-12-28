@@ -3,7 +3,7 @@
 //! This module provides filesystem tools with security controls for agents.
 //! Each filesystem operation is implemented as an individual tool.
 
-use rustychain::FunctionDeclaration;
+use rustychain::{AnyFunction, FunctionDeclaration};
 use rustychain::llm::function::{FnDeclarator, FnExecutor};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
@@ -11,6 +11,27 @@ use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+
+pub fn all_filesystem_tools(
+    config: Arc<FileSystemConfig>,
+) -> Vec<Arc<dyn AnyFunction>> {
+    vec![
+        Arc::new(ListDirectoryTool::new(config.clone()).declare()),
+        Arc::new(ShowTreeTool::new(config.clone()).declare()),
+        Arc::new(ReadFileTool::new(config.clone()).declare()),
+        Arc::new(WriteFileTool::new(config.clone()).declare()),
+        Arc::new(CreateFileTool::new(config.clone()).declare()),
+        Arc::new(ConcatenateFilesTool::new(config.clone()).declare()),
+        Arc::new(EditFileTool::new(config.clone()).declare()),
+        Arc::new(SearchInFileTool::new(config.clone()).declare()),
+        Arc::new(CreateDirectoryTool::new(config.clone()).declare()),
+        Arc::new(DeleteTool::new(config.clone()).declare()),
+        Arc::new(MoveTool::new(config.clone()).declare()),
+        Arc::new(CopyTool::new(config.clone()).declare()),
+        Arc::new(FileInfoTool::new(config.clone()).declare()),
+    ]
+}
 
 // ============================================================================
 // Security Configuration
@@ -53,6 +74,36 @@ impl FileSystemConfig {
             allowed_root: Some(allowed_root),
             ..Default::default()
         }
+    }
+
+    pub fn set_allowed_root(mut self, path: PathBuf) -> Self {
+        self.allowed_root = Some(path);
+        self
+    }
+
+    pub fn set_max_file_size(mut self, size: usize) -> Self {
+        self.max_file_size = size;
+        self
+    }
+
+    pub fn set_max_list_items(mut self, count: usize) -> Self {
+        self.max_list_items = count;
+        self
+    }
+
+    pub fn set_follow_symlinks(mut self, follow: bool) -> Self {
+        self.follow_symlinks = follow;
+        self
+    }
+
+    pub fn set_allow_hidden_files(mut self, allow: bool) -> Self {
+        self.allow_hidden_files = allow;
+        self
+    }
+
+    pub fn set_max_tree_depth(mut self, depth: usize) -> Self {
+        self.max_tree_depth = depth;
+        self
     }
 
     /// Validates and canonicalizes a path to ensure it's within the allowed root

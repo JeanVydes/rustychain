@@ -34,8 +34,100 @@ impl Default for SecurityPolicy {
 }
 
 impl SecurityPolicy {
+    /// Check if a command is allowed by this policy
+    pub fn is_command_allowed(&self, command: &str) -> Result<(), String> {
+        let cmd_base = command.split_whitespace().next().unwrap_or(command);
+
+        // Check blocklist first
+        if self.blocked_commands.contains(cmd_base) {
+            return Err(format!(
+                "Command '{}' is blocked by security policy",
+                cmd_base
+            ));
+        }
+
+        // Check whitelist if configured
+        if !self.allowed_commands.is_empty() && !self.allowed_commands.contains(cmd_base) {
+            return Err(format!("Command '{}' is not in the allowed list", cmd_base));
+        }
+
+        Ok(())
+    }
+
+    /// Check if a directory is allowed
+    pub fn is_directory_allowed(&self, path: &str) -> Result<(), String> {
+        if self.allowed_directories.is_empty() {
+            return Ok(());
+        }
+
+        let path_buf = PathBuf::from(path);
+        for allowed in &self.allowed_directories {
+            if path_buf.starts_with(allowed) {
+                return Ok(());
+            }
+        }
+
+        Err(format!(
+            "Directory '{}' is not allowed by security policy",
+            path
+        ))
+    }
+
+    /// Check if command appears to be destructive
+    pub fn is_potentially_destructive(&self, command: &str, args: &[String]) -> bool {
+        let dangerous_patterns = [
+            "rm", "delete", "del", "format", "drop", "truncate", "destroy",
+        ];
+        let full_cmd = format!("{} {}", command, args.join(" ")).to_lowercase();
+
+        dangerous_patterns.iter().any(|p| full_cmd.contains(p))
+    }
+
+    pub fn require_approval(&self, command: &str, args: &[String]) -> bool {
+        if self.require_approval_for_destructive {
+            self.is_potentially_destructive(command, args)
+        } else {
+            false
+        }
+    }
+
+    pub fn add_allowed_command(mut self, command: &str) -> Self {
+        self.allowed_commands.insert(command.to_string());
+        self
+    }
+
+    pub fn add_allowed_directory(mut self, path: PathBuf) -> Self {
+        self.allowed_directories.insert(path);
+        self
+    }
+
+    pub fn add_blocked_command(mut self, command: &str) -> Self {
+        self.blocked_commands.insert(command.to_string());
+        self
+    }
+
+    pub fn set_max_timeout(mut self, secs: u64) -> Self {
+        self.max_timeout_secs = secs;
+        self
+    }
+
+    pub fn enable_audit_logging(mut self, enable: bool) -> Self {
+        self.audit_logging = enable;
+        self
+    }
+
+    pub fn allow_shell_execution(mut self, allow: bool) -> Self {
+        self.allow_shell = allow;
+        self
+    }
+
+    pub fn require_approval_for_destructive_commands(mut self, require: bool) -> Self {
+        self.require_approval_for_destructive = require;
+        self
+    }
+
     /// Get default set of dangerous commands to block
-    fn default_blocked_commands() -> HashSet<String> {
+    pub fn default_blocked_commands() -> HashSet<String> {
         [
             // File/Directory Destruction
             "rm",
@@ -190,54 +282,5 @@ impl SecurityPolicy {
         .iter()
         .map(|s| s.to_string())
         .collect()
-    }
-
-    /// Check if a command is allowed by this policy
-    pub fn is_command_allowed(&self, command: &str) -> Result<(), String> {
-        let cmd_base = command.split_whitespace().next().unwrap_or(command);
-
-        // Check blocklist first
-        if self.blocked_commands.contains(cmd_base) {
-            return Err(format!(
-                "Command '{}' is blocked by security policy",
-                cmd_base
-            ));
-        }
-
-        // Check whitelist if configured
-        if !self.allowed_commands.is_empty() && !self.allowed_commands.contains(cmd_base) {
-            return Err(format!("Command '{}' is not in the allowed list", cmd_base));
-        }
-
-        Ok(())
-    }
-
-    /// Check if a directory is allowed
-    pub fn is_directory_allowed(&self, path: &str) -> Result<(), String> {
-        if self.allowed_directories.is_empty() {
-            return Ok(());
-        }
-
-        let path_buf = PathBuf::from(path);
-        for allowed in &self.allowed_directories {
-            if path_buf.starts_with(allowed) {
-                return Ok(());
-            }
-        }
-
-        Err(format!(
-            "Directory '{}' is not allowed by security policy",
-            path
-        ))
-    }
-
-    /// Check if command appears to be destructive
-    pub fn is_potentially_destructive(&self, command: &str, args: &[String]) -> bool {
-        let dangerous_patterns = [
-            "rm", "delete", "del", "format", "drop", "truncate", "destroy",
-        ];
-        let full_cmd = format!("{} {}", command, args.join(" ")).to_lowercase();
-
-        dangerous_patterns.iter().any(|p| full_cmd.contains(p))
     }
 }

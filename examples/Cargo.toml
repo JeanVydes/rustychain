@@ -12,3 +12,10 @@ futures-util = "0.3.31"
 rustychain = { path = "../rustychain", features = ["full"] }
 rustychain-tools-suite = { path = "../rustychain-tools-suite" }
 async-trait = "0.1.89"
+rmcp = { version = "0.12.0", features = [
+    "client",
+    "schemars",
+    "server",
+    "transport-streamable-http-client-reqwest",
+    "transport-child-process",
+] }

@@ -9,3 +9,4 @@ pub mod inference;
 pub mod mcp;
 pub mod streaming;
 pub mod tools;
+pub mod os_control;

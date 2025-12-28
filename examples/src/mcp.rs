@@ -1,8 +1,8 @@
-/*use rmcp::model::{ClientCapabilities, ClientInfo};
+use rmcp::model::{ClientCapabilities, ClientInfo};
 use rmcp::transport::ConfigureCommandExt;
 use rmcp::transport::{StreamableHttpClientTransport, TokioChildProcess};
 use rustychain::prelude::*;
-use rustychain::tools::mcp::McpTool;
+use rustychain_tools_suite::mcp::McpTool;
 use std::sync::Arc;
 
 #[tokio::main]
@@ -56,9 +56,4 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     });
 
     Ok(())
-}
-*/
-
-pub fn main() {
-    println!("This example has been temporarily disabled.");
 }
