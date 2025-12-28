@@ -273,7 +273,7 @@ where
                     let result = FunctionResult {
                         name: call.name.clone(),
                         results: res,
-                        context: None,
+                        context: call.context.clone(),
                     };
 
                     // Emit completed event (can be intercepted to modify result)
@@ -298,14 +298,7 @@ where
         let node = self.get_node(parent_id).await?;
         if let NodeType::ToolResults(results) = node.node_type {
             let tool_inference = Inference::with_function_results(results);
-            let node_id = self
-                .create_node(
-                    NodeType::Inference(tool_inference.clone()),
-                    Some(parent_id.clone()),
-                )
-                .await?;
-            self.set_current_node(node_id.clone()).await;
-            self.process_inference_node(&node_id, tool_inference).await
+            self.process_inference_node(parent_id, tool_inference).await
         } else {
             Err(Error::Internal("No tool results to synthesize".into()))
         }

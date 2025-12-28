@@ -188,11 +188,6 @@ impl Inference {
 
     #[cfg(feature = "openrouter")]
     pub fn to_openrouter_message(&self) -> crate::Result<openrouter_rs::api::chat::Message> {
-        let role = match self.content.role {
-            Role::Tool => openrouter_rs::types::Role::User, // lib doesnt support tools yet
-            _ => Role::to_openrouter(&self.content.role),
-        };
-
         let content = match self.content.role {
             Role::Tool => {
                 if !self.function_results.is_empty() {
@@ -209,7 +204,7 @@ impl Inference {
         };
 
         // use the first function result as tool_call_id and name
-        let (tool_call_id, name) = self
+        let (name, tool_call_id) = self
             .function_results
             .first()
             .map(|fr| (Some(fr.name.clone()), fr.context.clone()))
@@ -219,7 +214,7 @@ impl Inference {
             self.function_calls
                 .iter()
                 .map(|fc| openrouter_rs::types::ToolCall {
-                    id: fc.name.clone(),
+                    id: fc.context.clone().unwrap_or_else(|| fc.name.clone()),
                     type_: "function".to_string(),
                     function: fc.to_openrouter(),
                 })
@@ -227,12 +222,17 @@ impl Inference {
         )
         .filter(|v| !v.is_empty());
 
-        Ok(openrouter_rs::api::chat::Message {
-            role,
+
+        let res = openrouter_rs::api::chat::Message {
+            role: Role::to_openrouter(&self.content.role),
             content,
             name,
             tool_call_id,
             tool_calls,
-        })
+        };
+
+        log::info!("Converted to OpenRouter message: {:?}", res);
+
+        Ok(res)
     }
 }

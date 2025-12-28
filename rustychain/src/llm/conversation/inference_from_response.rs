@@ -8,7 +8,6 @@ use ollama_rs::generation::chat::ChatMessageResponse;
 use openai_api_rs::v1::chat_completion::ChatCompletionChoice;
 #[cfg(feature = "openai")]
 use openai_api_rs::v1::chat_completion::chat_completion_stream::ChatCompletionStreamResponse;
-use openrouter_rs::types::FunctionCall as OpenRouterFunctionCall;
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -28,12 +27,7 @@ impl Inference {
             .tool_calls()
             .unwrap_or(&[])
             .iter()
-            .map(|fc| {
-                FunctionCall::from_openrouter(OpenRouterFunctionCall {
-                    name: fc.function.name.clone(),
-                    arguments: fc.function.arguments.clone(),
-                })
-            })
+            .map(|fc| FunctionCall::from_openrouter(fc))
             .collect();
 
         let mut text = choice.content().map(|s| s.to_string());
@@ -62,12 +56,20 @@ impl Inference {
         Inference {
             model: Some(openrouter_message.model.clone()),
             content: InferenceContent {
-                role: Role::from_openrouter_str(choice.role().unwrap_or("assistant")),
+                role: Role::from_openrouter_str(choice.role().unwrap_or_default()),
                 text,
                 audio: None,
                 images: None,
             },
-            thoughts: vec![],
+            thoughts: choice
+                .reasoning()
+                .map(|thinking| {
+                    vec![Thought {
+                        text: thinking.to_string(),
+                        context: None,
+                    }]
+                })
+                .unwrap_or_default(),
             function_calls,
             function_results: vec![],
             finish_reason,

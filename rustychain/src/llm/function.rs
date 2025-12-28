@@ -91,7 +91,7 @@ fn value_to_json_schema_define(value: &Value) -> JSONSchemaDefine {
         items,
     }
 }
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct FunctionCall {
     #[schemars(description = "Name of the function being called")]
     pub name: String,
@@ -114,7 +114,7 @@ impl Default for FunctionCall {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct FunctionResult {
     pub name: String,
     pub results: Value,
@@ -196,11 +196,11 @@ impl FunctionCall {
         }
     }
 
-    pub fn from_openrouter(openrouter_call: openrouter_rs::types::FunctionCall) -> FunctionCall {
+    pub fn from_openrouter(openrouter_call: &openrouter_rs::types::ToolCall) -> FunctionCall {
         FunctionCall {
-            name: openrouter_call.name,
-            arguments: serde_json::from_str(&openrouter_call.arguments).unwrap_or(Value::Null),
-            context: None,
+            name: openrouter_call.name().to_string(),
+            arguments:  serde_json::from_str(&openrouter_call.arguments_json()).unwrap_or(Value::Null),
+            context: Some(openrouter_call.id().to_string()),
         }
     }
 }

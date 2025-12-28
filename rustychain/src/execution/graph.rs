@@ -1,3 +1,5 @@
+// graph.rs
+
 use crate::{
     Inference,
     execution::{
@@ -65,7 +67,11 @@ impl ExecutionEnvironment for ExecutionGraph {
         for id in path {
             if let Some(node) = nodes.get(&id) {
                 match &node.node_type {
-                    NodeType::Inference(inf) => history.push(inf.clone()),
+                    NodeType::Inference(inf) => {
+                        if inf.content.text.is_some() || !inf.function_calls.is_empty() {
+                            history.push(inf.clone());
+                        }
+                    }
                     NodeType::InferenceResult(inf) => history.push(inf.clone()),
                     NodeType::ToolResults(results) => {
                         if !results.is_empty() {
@@ -77,7 +83,22 @@ impl ExecutionEnvironment for ExecutionGraph {
                 }
             }
         }
-        Ok(history)
+
+        let mut clean_history: Vec<Inference> = Vec::new();
+        for inf in history {
+            if let Some(last) = clean_history.last()
+                && last.content.role == crate::Role::Tool
+                && inf.content.role == crate::Role::Tool
+                && last.function_results.first().map(|r| &r.context)
+                    == inf.function_results.first().map(|r| &r.context)
+            {
+                continue;
+            }
+
+            clean_history.push(inf);
+        }
+
+        Ok(clean_history)
     }
 
     async fn clear(&self) -> crate::Result<()> {

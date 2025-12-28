@@ -10,7 +10,7 @@ use crate::{
 
 /// A `Inference` in the conversation, which may include text, audio, images, and function calls/results.
 /// This is a unified representation that can be converted to/from various LLM formats.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Inference {
     pub model: Option<String>,
     pub content: InferenceContent,
@@ -23,20 +23,20 @@ pub struct Inference {
     pub usage: Option<UsageMetadata>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Thought {
     pub text: String,
     pub context: Option<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct UsageMetadata {
     pub prompt_tokens: usize,
     pub completion_tokens: usize,
     pub total_tokens: usize,
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InferenceContent {
     pub role: Role,
     pub text: Option<String>,
