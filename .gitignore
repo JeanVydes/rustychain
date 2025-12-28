@@ -17,3 +17,6 @@ out/
 *.lock
 docs/
 /*.env
+draft_*
+sandbox/
+tmp/

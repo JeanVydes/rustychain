@@ -124,7 +124,7 @@ pub async fn build_llm() -> rustychain::Result<Arc<LLM>> {
             .set_model("gemini-2.5-flash")
             .set_provider(LLMProvider::Google)
             .set_system_prompt("You are a helpful agent. Use tools when needed.")
-            //.add_tool(rustychain_tools_suite::integrations::search::DuckDuckGoSearchTool::new().declare())
+            .add_tool(rustychain_tools_suite::integrations::search::DuckDuckGoSearchTool::new().declare())
             .build()?,
     ))
 }

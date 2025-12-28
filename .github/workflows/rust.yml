@@ -34,7 +34,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Run Clippy
-        run: cargo clippy --all-targets --features full -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   audit:
     name: Security Audit
@@ -78,14 +78,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libssl-dev pkg-config
       
-      - name: Build all features
-        run: cargo build --features full --verbose
-      
-      - name: Run lib tests (General)
-        run: cargo test --lib --features full --verbose
-      
-      - name: Run doc tests
-        run: cargo test --doc --features full
+      - name: Build workspace (all features)
+        run: cargo build --workspace --all-features --verbose
+
+      - name: Run workspace tests (unit/integration)
+        run: cargo test --workspace --all-features --verbose
+
+      - name: Run doctests (workspace)
+        run: cargo test --doc --workspace --all-features
         continue-on-error: ${{ matrix.rust == 'nightly' }}
 
   test-db-postgres:
@@ -123,16 +123,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libssl-dev pkg-config
       
-      - name: Build with all features
-        run: cargo build --features full --verbose
+      - name: Build workspace (all features)
+        run: cargo build --workspace --all-features --verbose
 
-      - name: Run lib/integration tests with Postgres
-        run: cargo test --lib --features full --verbose
+      - name: Run `rustychain` tests that need Postgres
+        run: cargo test -p rustychain --lib --all-features --verbose
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
-      
-      - name: Run integration tests
-        run: cargo test --test '*' --features full
+
+      - name: Run `rustychain` integration tests
+        run: cargo test -p rustychain --test '*' --all-features
         continue-on-error: true
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
@@ -163,8 +163,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       
-      - name: Check documentation
-        run: cargo doc --features full --no-deps --document-private-items
+      - name: Check documentation (workspace)
+        run: cargo doc --workspace --no-deps --all-features --document-private-items
         env:
           RUSTDOCFLAGS: -D warnings
       
@@ -203,7 +203,7 @@ jobs:
         run: cargo install cargo-tarpaulin
       
       - name: Generate coverage
-        run: cargo tarpaulin --features full --workspace --timeout 300 --out xml
+        run: cargo tarpaulin --workspace --all-features --timeout 300 --out xml
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
       
@@ -264,8 +264,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       
-      - name: Check features
-        run: cargo check --no-default-features --features "${{ matrix.features }}"
+      - name: Check features (workspace)
+        run: cargo check --workspace --no-default-features --features "${{ matrix.features }}"
 
   udeps:
     name: Unused Dependencies
@@ -278,8 +278,8 @@ jobs:
       - name: Install cargo-udeps
         run: cargo install cargo-udeps --locked
       
-      - name: Check unused dependencies
-        run: cargo +nightly udeps --all-targets --features full
+      - name: Check unused dependencies (workspace)
+        run: cargo +nightly udeps --workspace --all-targets --all-features
 
   dependency-review:
     name: Dependency Review
