@@ -197,9 +197,10 @@ impl Inference {
             Role::Tool => {
                 if !self.function_results.is_empty() {
                     self.function_results
-                        .first()
+                        .iter()
                         .map(|fr| fr.results.to_string())
-                        .unwrap_or_default()
+                        .collect::<Vec<_>>()
+                        .join("\n")
                 } else {
                     self.content.text.clone().unwrap_or_default()
                 }
@@ -207,6 +208,31 @@ impl Inference {
             _ => self.content.text.clone().unwrap_or_default(),
         };
 
-        Ok(openrouter_rs::api::chat::Message { role, content })
+        // use the first function result as tool_call_id and name
+        let (tool_call_id, name) = self
+            .function_results
+            .first()
+            .map(|fr| (Some(fr.name.clone()), fr.context.clone()))
+            .unwrap_or((None, None));
+
+        let tool_calls: Option<Vec<_>> = Some(
+            self.function_calls
+                .iter()
+                .map(|fc| openrouter_rs::types::ToolCall {
+                    id: fc.name.clone(),
+                    type_: "function".to_string(),
+                    function: fc.to_openrouter(),
+                })
+                .collect::<Vec<_>>(),
+        )
+        .filter(|v| !v.is_empty());
+
+        Ok(openrouter_rs::api::chat::Message {
+            role,
+            content,
+            name,
+            tool_call_id,
+            tool_calls,
+        })
     }
 }

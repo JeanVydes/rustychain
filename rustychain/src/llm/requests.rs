@@ -282,17 +282,15 @@ impl LLM {
             }
             // Case 2: YES schema and YES native tools -> Direct injection of both
             (Some(schema), true) => {
-                req = req
-                    .tools(self.tools.iter().map(|t| t.to_ollama()).collect())
-                    .format(
-                        ollama_rs::generation::parameters::FormatType::StructuredJson(Box::from(
-                            JsonStructure::new_for_schema(
-                                crate::non_native_function_calling::clean_schema_for_ollama(
-                                    schema.clone(),
-                                ),
+                req = req.format(
+                    ollama_rs::generation::parameters::FormatType::StructuredJson(Box::from(
+                        JsonStructure::new_for_schema(
+                            crate::non_native_function_calling::clean_schema_for_ollama(
+                                schema.clone(),
                             ),
-                        )),
-                    );
+                        ),
+                    )),
+                );
             }
             // Case 3: NO schema and NO native tools -> Default schema wrapping
             (None, false) => {
@@ -304,9 +302,11 @@ impl LLM {
                 );
             }
             // Case 4: NO schema and YES native tools -> Just inject tools
-            (None, true) => {
-                req = req.tools(self.tools.iter().map(|t| t.to_ollama()).collect());
-            }
+            (None, true) => {}
+        }
+
+        if config.native_tool_handling {
+            req = req.tools(self.tools.iter().map(|t| t.to_ollama()).collect());
         }
 
         Ok(req)
@@ -331,6 +331,9 @@ impl LLM {
         messages.push(openrouter_rs::api::chat::Message {
             role: Role::to_openrouter(&crate::Role::System),
             content: system_prompt,
+            name: None,
+            tool_call_id: None,
+            tool_calls: None,
         });
 
         for m in history {
@@ -350,12 +353,8 @@ impl LLM {
             req = req.reasoning(thinking_mode);
         }
 
-        //if let Some(stop_sequences) = &config.stop_sequences {
-        //  req = req.stop(stop_sequences.clone());
-        //}
-
-        /*if config.native_tool_handling {
-            req = req. lib not support yet tools
+        /*if let Some(stop_sequences) = &config.stop_sequences {
+          req = req.
         }*/
 
         match (&config.output_schema, config.native_tool_handling) {
@@ -392,6 +391,17 @@ impl LLM {
                 });
             }
             (None, true) => {}
+        }
+
+        if config.native_tool_handling {
+            req = req
+                .tools(
+                    self.tools
+                        .iter()
+                        .map(|t| t.to_openrouter())
+                        .collect::<Vec<_>>(),
+                )
+                .tool_choice(config.to_openrouter_tool_calling_mode());
         }
 
         req.build().map_err(|e| {

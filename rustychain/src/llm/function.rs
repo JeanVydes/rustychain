@@ -240,7 +240,10 @@ pub trait AnyFunction: Send + Debug + Sync {
     fn to_openai(&self) -> openai_api_rs::v1::chat_completion::Tool;
     #[cfg(feature = "ollama")]
     fn to_ollama(&self) -> ollama_rs::generation::tools::ToolInfo;
-    fn to_openrouter(&self) -> openrouter_rs::types::ToolCall;
+    #[cfg(feature = "openrouter")]
+    fn to_openrouter(&self) -> openrouter_rs::types::Tool;
+    #[cfg(feature = "openrouter")]
+    fn to_openrouter_specific_tool_choice(&self) -> openrouter_rs::types::SpecificToolChoice;
 }
 
 impl<A, R> From<FunctionDeclaration<A, R>> for Arc<dyn AnyFunction>
@@ -321,19 +324,26 @@ where
     }
 
     #[cfg(feature = "openrouter")]
-    fn to_openrouter(&self) -> openrouter_rs::types::ToolCall {
-        openrouter_rs::types::ToolCall {
-            id: self.name.to_string(),
-            type_: "function".to_string(),
-            function: openrouter_rs::types::FunctionCall {
+    fn to_openrouter(&self) -> openrouter_rs::types::Tool {
+        openrouter_rs::types::Tool {
+            tool_type: "function".to_string(),
+            function: openrouter_rs::types::FunctionDefinition {
                 name: self.name.to_string(),
-                arguments: self
+                description: self.description.to_string(),
+                parameters: self
                     .parameters
                     .clone()
-                    .to_value()
-                    .as_str()
-                    .unwrap_or("{}")
-                    .to_string(),
+                    .to_value(),
+            },
+        }
+    }
+
+    #[cfg(feature = "openrouter")]
+    fn to_openrouter_specific_tool_choice(&self) -> openrouter_rs::types::SpecificToolChoice {
+        openrouter_rs::types::SpecificToolChoice {
+            tool_type: "function".to_string(),
+            function: openrouter_rs::types::SpecificToolFunction {
+                name: self.name.to_string(),
             },
         }
     }

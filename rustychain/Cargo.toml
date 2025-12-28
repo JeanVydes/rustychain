@@ -31,10 +31,15 @@ async-trait = "0.1.89"
 async-recursion = "1"
 
 # LLM Providers
+
+# OpenAI, this crate is unofficial, widely used, but unmaintained, lacks some features, we should implement this ourselves eventually
 openai-api-rs = { version = "9.0.0", optional = true }
+# Google Gemini, this crate is unofficial, but works well
 gemini-rust = { version = "1.5.1", optional = true }
+# Ollama, unofficial crate, same as openai-api-rs
 ollama-rs = { version = "0.3.3", features = ["stream"], optional = true }
-openrouter-rs = { version = "0.4.5", optional = true }
+# Original crate is unmaintained, using a fork with fixes
+openrouter-rs = { git = "https://github.com/lojurcom/openrouter-rs", branch = "tool-support", optional = true }
 
 # Tools
 scraper = { version = "0.25.0" }

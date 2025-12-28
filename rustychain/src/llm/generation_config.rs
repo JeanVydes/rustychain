@@ -128,6 +128,20 @@ impl GenerationConfig {
             }
         }
     }
+
+    #[cfg(feature = "openrouter")]
+    pub fn to_openrouter_tool_calling_mode(&self) -> openrouter_rs::types::ToolChoice {
+        use crate::ToolCallingMode;
+
+        match &self.tool_calling_mode {
+            ToolCallingMode::None => openrouter_rs::types::ToolChoice::none(),
+            ToolCallingMode::Auto => openrouter_rs::types::ToolChoice::auto(),
+            ToolCallingMode::Any => openrouter_rs::types::ToolChoice::required(),
+            ToolCallingMode::Forced(tool) => openrouter_rs::types::ToolChoice::Specific(
+                tool.to_openrouter_specific_tool_choice(),
+            ),
+        }
+    }
 }
 
 impl Default for GenerationConfig {
