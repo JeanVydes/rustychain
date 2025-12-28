@@ -1,4 +1,4 @@
 pub mod fs;
-pub mod shell;
+pub mod bash;
 pub use fs::*;
-pub use shell::*;
+pub use bash::*;
