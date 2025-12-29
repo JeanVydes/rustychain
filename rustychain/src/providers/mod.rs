@@ -8,12 +8,38 @@ use serde::{Deserialize, Serialize};
 
 use crate::{FinishReason, GenerationConfig, Inference, Role};
 
-pub const DEFAULT_OPENAI_API_BASE: &str = "https://api.openai.com/v1";
+
 pub const DEFAULT_GOOGLE_API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta";
 pub const DEFAULT_ANTHROPIC_API_BASE: &str = "https://api.anthropic.com/v1";
 pub const DEFAULT_BEDROCK_API_BASE: &str = "https://bedrock-runtime.us-east-1.amazonaws.com";
+
+pub const DEFAULT_OPENAI_API_BASE: &str = "https://api.openai.com/v1";
 pub const DEFAULT_OPENROUTER_API_BASE: &str = "https://openrouter.ai/api/v1";
 pub const DEFAULT_OLLAMA_API_BASE: &str = "http://localhost:11434/api";
+pub const DEFAULT_DEEPSEEK_API_BASE: &str = "https://api.deepseek.com";
+pub const DEFAULT_GROQ_API_BASE: &str = "https://api.groq.com/openai/v1";
+pub const DEFAULT_TOGETHER_API_BASE: &str = "https://api.together.xyz/v1";
+pub const DEFAULT_MISTRAL_API_BASE: &str = "https://api.mistral.ai/v1";
+pub const DEFAULT_PERPLEXITY_API_BASE: &str = "https://api.perplexity.ai";
+pub const DEFAULT_FIREWORKS_API_BASE: &str = "https://api.fireworks.ai/inference/v1";
+pub const DEFAULT_XAI_API_BASE: &str = "https://api.x.ai/v1";
+pub const DEFAULT_LMSTUDIO_API_BASE: &str = "http://localhost:1234/v1";
+pub const DEFAULT_POE_API_BASE: &str = "https://api.poe.com/v1";
+
+pub const OPENAI_COMPATIBLE_PROVIDERS: &[LLMProvider] = &[
+    LLMProvider::OpenAI,
+    LLMProvider::Ollama,
+    LLMProvider::OpenRouter,
+    LLMProvider::DeepSeek,
+    LLMProvider::Groq,
+    LLMProvider::Together,
+    LLMProvider::Mistral,
+    LLMProvider::Perplexity,
+    LLMProvider::Fireworks,
+    LLMProvider::XAI,
+    LLMProvider::LMStudio,
+    LLMProvider::Poe,
+];
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Eq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
@@ -22,8 +48,17 @@ pub enum LLMProvider {
 
     // Supported with OpenAI Compatible API
     OpenAI,
-    Ollama,
     OpenRouter,
+    Ollama,
+    DeepSeek,
+    Groq,
+    Together,
+    Mistral,
+    Perplexity,
+    Fireworks,
+    XAI,
+    LMStudio,
+    Poe,
 
     // Not Supported Yet
     Anthropic,
@@ -39,6 +74,15 @@ impl LLMProvider {
             LLMProvider::Ollama => "ollama",
             LLMProvider::Bedrock => "bedrock",
             LLMProvider::OpenRouter => "openrouter",
+            LLMProvider::DeepSeek => "deepseek",
+            LLMProvider::Groq => "groq",
+            LLMProvider::Together => "together",
+            LLMProvider::Mistral => "mistral",
+            LLMProvider::Perplexity => "perplexity",
+            LLMProvider::Fireworks => "fireworks",
+            LLMProvider::XAI => "xai",
+            LLMProvider::LMStudio => "lmstudio",
+            LLMProvider::Poe => "poe",
         }
     }
 
@@ -50,6 +94,15 @@ impl LLMProvider {
             LLMProvider::Ollama => DEFAULT_OLLAMA_API_BASE,
             LLMProvider::Bedrock => DEFAULT_BEDROCK_API_BASE,
             LLMProvider::OpenRouter => DEFAULT_OPENROUTER_API_BASE,
+            LLMProvider::DeepSeek => DEFAULT_DEEPSEEK_API_BASE,
+            LLMProvider::Groq => DEFAULT_GROQ_API_BASE,
+            LLMProvider::Together => DEFAULT_TOGETHER_API_BASE,
+            LLMProvider::Mistral => DEFAULT_MISTRAL_API_BASE,
+            LLMProvider::Perplexity => DEFAULT_PERPLEXITY_API_BASE,
+            LLMProvider::Fireworks => DEFAULT_FIREWORKS_API_BASE,
+            LLMProvider::XAI => DEFAULT_XAI_API_BASE,
+            LLMProvider::LMStudio => DEFAULT_LMSTUDIO_API_BASE,
+            LLMProvider::Poe => DEFAULT_POE_API_BASE,
         }
     }
 }

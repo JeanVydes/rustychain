@@ -32,7 +32,18 @@ impl LLMEmbedding for LLM {
                 Ok(res.embedding.values)
             }
             #[cfg(feature = "openai")]
-            LLMProvider::OpenAI | LLMProvider::Ollama | LLMProvider::OpenRouter => {
+            LLMProvider::OpenAI
+            | LLMProvider::Ollama
+            | LLMProvider::OpenRouter
+            | LLMProvider::DeepSeek
+            | LLMProvider::Groq
+            | LLMProvider::Together
+            | LLMProvider::Mistral
+            | LLMProvider::Perplexity
+            | LLMProvider::Fireworks
+            | LLMProvider::XAI
+            | LLMProvider::LMStudio
+            | LLMProvider::Poe => {
                 use crate::providers::{
                     ProviderAbstractionLayer, openai::OpenAICompatibleProvider,
                 };

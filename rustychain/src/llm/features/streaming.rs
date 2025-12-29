@@ -53,7 +53,18 @@ impl LLMStreaming for LLM {
                 Ok(Box::pin(mapped))
             }
             #[cfg(feature = "openai")]
-            LLMProvider::OpenAI => {
+            LLMProvider::OpenAI
+            | LLMProvider::Ollama
+            | LLMProvider::OpenRouter
+            | LLMProvider::DeepSeek
+            | LLMProvider::Groq
+            | LLMProvider::Together
+            | LLMProvider::Mistral
+            | LLMProvider::Perplexity
+            | LLMProvider::Fireworks
+            | LLMProvider::XAI
+            | LLMProvider::LMStudio
+            | LLMProvider::Poe => {
                 use crate::providers::openai::OpenAICompatibleProvider;
 
                 let provider = OpenAICompatibleProvider::new(

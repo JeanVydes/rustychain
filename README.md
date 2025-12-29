@@ -87,11 +87,20 @@ llm.inference("Hello, how are you?")
 
 |Provider|Chat Completion|Streaming|Native Function Calling|Function Calling Layer|Embeddings|
 |--------|----------------|---------|----------------------|----------------------|----------|
-|OpenAI  |✅|✅|Depends on model|✅|✅|
 |Google  |✅|✅|Depends on model|✅|✅|
+|OpenAI  |✅|✅|Depends on model|✅|✅|
 |Ollama  |✅|✅|Depends on model|✅|✅|
 |OpenRouter|✅|✅|Depends on model|✅|✅|
-|Any OpenAI compatible API (set base url for not listed here)|✅|✅|Depends on model|✅|✅|
+|DeepSeek|✅|✅|Depends on model|✅|✅|
+|Groq|✅|✅|Depends on model|✅|✅|
+|Together|✅|✅|Depends on model|✅|✅|
+|Mistral|✅|✅|Depends on model|✅|✅|
+|Perplexity|✅|✅|Depends on model|✅|✅|
+|Fireworks|✅|✅|Depends on model|✅|✅|
+|XAI|✅|✅|Depends on model|✅|✅|
+|LMStudio|✅|✅|Depends on model|✅|✅|
+|Poe|✅|✅|Depends on model|✅|✅|
+|Any OpenAI compatible API (set base url for ones not listed here)|✅|✅|Depends on model|✅|✅|
 |Anthropic|❌|❌|❌|❌|❌|
 
 ## Tools
