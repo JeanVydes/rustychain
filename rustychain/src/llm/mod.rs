@@ -4,7 +4,6 @@
 //! various LLM providers.
 
 pub mod builder;
-pub mod clients;
 pub mod conversation;
 pub mod definitions;
 pub mod features;
@@ -12,7 +11,6 @@ pub mod function;
 pub mod generation_config;
 pub mod inference_task;
 pub mod non_native_function_calling;
-pub mod requests;
 pub mod thinking_mode;
 pub mod tool_calling_mode;
 pub use builder::*;

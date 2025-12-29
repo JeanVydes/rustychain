@@ -12,7 +12,15 @@ impl LLMEmbedding for LLM {
         match self.provider {
             #[cfg(feature = "google")]
             LLMProvider::Google => {
-                let client = self.get_gemini_client()?;
+                use crate::providers::{ProviderAbstractionLayer, google::GoogleProvider};
+
+                let client = GoogleProvider::new(
+                    self.endpoint
+                        .clone()
+                        .unwrap_or(self.provider.default_api_base().to_string()),
+                    self.authorization.clone(),
+                )
+                .client()?;
 
                 let res = client
                     .embed_content()
@@ -24,16 +32,30 @@ impl LLMEmbedding for LLM {
                 Ok(res.embedding.values)
             }
             #[cfg(feature = "openai")]
-            LLMProvider::OpenAI => {
-                let mut client = self.get_openai_client()?;
+            LLMProvider::OpenAI | LLMProvider::Ollama | LLMProvider::OpenRouter => {
+                use crate::providers::{ProviderAbstractionLayer, openai::OpenAICompatibleProvider};
 
-                let mut req = openai_api_rs::v1::embedding::EmbeddingRequest::new(
-                    self.model.clone(),
-                    vec![text.to_owned()],
+                let provider = OpenAICompatibleProvider::new(
+                    self.endpoint
+                        .clone()
+                        .unwrap_or(self.provider.default_api_base().to_string()),
+                    self.authorization.clone(),
                 );
-                req.dimensions = Some(dim);
 
-                let res = client.embedding(req).await?;
+                let req = OpenAICompatibleProvider::new_embedding_request(
+                    &self.model,
+                    dim as u32,
+                    vec![text],
+                )?;
+
+                let res = provider
+                    .client()?
+                    .embeddings()
+                    .create(req)
+                    .await
+                    .map_err(|e| {
+                        crate::Error::Generic(format!("OpenAI embedding request failed: {}", e))
+                    })?;
 
                 if let Some(data) = res.data.first() {
                     Ok(data.embedding.clone())

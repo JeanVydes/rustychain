@@ -4,7 +4,10 @@ use rustychain::{FnDeclarator, FnExecutor, FunctionDeclaration};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 
-use crate::os::{CommandArgs, CommandExecutor, CommandResult, InputAction, InputCallback, InputContext, InputDetector, SecurityPolicy};
+use crate::os::{
+    CommandArgs, CommandExecutor, CommandResult, InputAction, InputCallback, InputContext,
+    InputDetector, SecurityPolicy,
+};
 
 #[derive(Clone)]
 pub struct CommandTool {
@@ -19,8 +22,12 @@ impl CommandTool {
 
     pub fn with_security_policy(policy: SecurityPolicy) -> Self {
         log::warn!("⚠️  CommandTool initialized - allows OS command execution");
-        log::warn!("⚠️  Current policy: shell={}, audit={}", policy.allow_shell, policy.audit_logging);
-        
+        log::warn!(
+            "⚠️  Current policy: shell={}, audit={}",
+            policy.allow_shell,
+            policy.audit_logging
+        );
+
         let detector = InputDetector::new(vec![]);
         let executor = CommandExecutor::new(detector, None);
 
@@ -37,7 +44,10 @@ impl CommandTool {
     {
         let callback_arc: Arc<InputCallback> = Arc::new(Box::new(move |ctx: InputContext| {
             let fut = callback(ctx);
-            Box::pin(fut) as Pin<Box<dyn std::future::Future<Output = rustychain::Result<InputAction>> + Send>>
+            Box::pin(fut)
+                as Pin<
+                    Box<dyn std::future::Future<Output = rustychain::Result<InputAction>> + Send>,
+                >
         }));
 
         // Create new executor with callback
@@ -48,19 +58,21 @@ impl CommandTool {
 
     fn validate_args(&self, args: &CommandArgs) -> rustychain::Result<()> {
         // Check command allowed
-        self.security_policy.is_command_allowed(&args.command)
-            .map_err(|e| rustychain::Error::Generic(e))?;
+        self.security_policy
+            .is_command_allowed(&args.command)
+            .map_err(rustychain::Error::Generic)?;
 
         // Check directory allowed
         if let Some(ref dir) = args.working_dir {
-            self.security_policy.is_directory_allowed(dir)
-                .map_err(|e| rustychain::Error::Generic(e))?;
+            self.security_policy
+                .is_directory_allowed(dir)
+                .map_err(rustychain::Error::Generic)?;
         }
 
         // Check shell usage
         if args.use_shell && !self.security_policy.allow_shell {
             return Err(rustychain::Error::Generic(
-                "Shell execution is disabled by security policy".into()
+                "Shell execution is disabled by security policy".into(),
             ));
         }
 
@@ -73,9 +85,16 @@ impl CommandTool {
         }
 
         // Check destructive commands
-        if self.security_policy.require_approval_for_destructive 
-            && self.security_policy.is_potentially_destructive(&args.command, &args.args) {
-            log::warn!("⚠️  Potentially destructive command: {} {:?}", args.command, args.args);
+        if self.security_policy.require_approval_for_destructive
+            && self
+                .security_policy
+                .is_potentially_destructive(&args.command, &args.args)
+        {
+            log::warn!(
+                "⚠️  Potentially destructive command: {} {:?}",
+                args.command,
+                args.args
+            );
             todo!("Implement approval workflow for destructive commands");
         }
 
@@ -128,7 +147,7 @@ impl FnExecutor<CommandArgs, serde_json::Value> for CommandTool {
 
         // Execute command
         let result = self.executor.execute(args.clone()).await?;
-        
+
         // Audit log
         self.audit_log(&args, &result);
 
@@ -175,7 +194,9 @@ impl FnDeclarator<CommandArgs, serde_json::Value> for CommandTool {
 pub struct SignalArgs {
     #[schemars(description = "Process ID to send the signal to.")]
     pub pid: u32,
-    #[schemars(description = "Signal: 'kill', 'term', 'int', 'stop', 'cont', 'hup', 'usr1', 'usr2'.")]
+    #[schemars(
+        description = "Signal: 'kill', 'term', 'int', 'stop', 'cont', 'hup', 'usr1', 'usr2'."
+    )]
     pub signal: String,
 }
 
@@ -196,7 +217,12 @@ impl FnExecutor<SignalArgs, serde_json::Value> for SignalTool {
                 "hup" | "sighup" | "1" => "1",
                 "usr1" | "sigusr1" | "10" => "10",
                 "usr2" | "sigusr2" | "12" => "12",
-                _ => return Err(rustychain::Error::Generic(format!("Unknown signal: {}", args.signal))),
+                _ => {
+                    return Err(rustychain::Error::Generic(format!(
+                        "Unknown signal: {}",
+                        args.signal
+                    )));
+                }
             };
 
             let output = std::process::Command::new("kill")
@@ -220,7 +246,7 @@ impl FnExecutor<SignalArgs, serde_json::Value> for SignalTool {
 
         #[cfg(not(unix))]
         Err(rustychain::Error::Generic(
-            "Signal sending is only supported on Unix systems".into()
+            "Signal sending is only supported on Unix systems".into(),
         ))
     }
 }

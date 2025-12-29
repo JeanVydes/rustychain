@@ -1,3 +1,5 @@
+use secrecy::SecretString;
+
 use crate::{
     llm::{AnyFunction, LLM},
     providers::LLMProvider,
@@ -14,7 +16,7 @@ pub struct LLMBuilder {
     /// LLM provider (e.g., OpenAI, Google).
     pub provider: Option<LLMProvider>,
     /// Authorization token or credentials.
-    pub authorization: Option<String>,
+    pub authorization: Option<SecretString>,
     /// Collection of tools (functions) to enhance LLM capabilities.
     pub tools: Vec<Arc<dyn AnyFunction>>,
     /// Optional custom endpoint for the LLM API.
@@ -76,7 +78,7 @@ impl LLMBuilder {
 
     /// Sets the authorization token.
     pub fn set_authorization(mut self, authorization: impl ToString) -> Self {
-        self.authorization = Some(authorization.to_string());
+        self.authorization = Some(SecretString::new(authorization.to_string()));
         self
     }
 

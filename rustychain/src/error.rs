@@ -4,8 +4,6 @@
 
 #[cfg(feature = "google")]
 pub use gemini_rust::ClientError;
-#[cfg(feature = "ollama")]
-pub use ollama_rs::error::OllamaError;
 
 use std::{any::Any, error::Error as StdError, sync::Arc};
 use thiserror::Error;
@@ -23,13 +21,10 @@ pub enum Error {
     #[error("Gemini API Error: {0}")]
     Gemini(#[from] Box<ClientError>),
 
-    #[cfg(feature = "ollama")]
-    #[error("Ollama Error: {0}")]
-    Ollama(#[from] Box<OllamaError>),
 
     #[cfg(feature = "openai")]
     #[error("OpenAI Error: {0}")]
-    OpenAI(#[from] Box<openai_api_rs::v1::error::APIError>),
+    OpenAI(#[from] Box<async_openai::error::OpenAIError>),
 
     // --- SERIALIZATION & NETWORK ---
     #[error("Serialization Error: {0}")]
@@ -217,8 +212,8 @@ impl From<mongodb::bson::ser::Error> for Error {
 }
 
 #[cfg(feature = "openai")]
-impl From<openai_api_rs::v1::error::APIError> for Error {
-    fn from(err: openai_api_rs::v1::error::APIError) -> Self {
+impl From<async_openai::error::OpenAIError> for Error {
+    fn from(err: async_openai::error::OpenAIError) -> Self {
         Error::OpenAI(Box::new(err))
     }
 }
@@ -227,13 +222,6 @@ impl From<openai_api_rs::v1::error::APIError> for Error {
 impl From<ClientError> for Error {
     fn from(err: ClientError) -> Self {
         Error::Gemini(Box::new(err))
-    }
-}
-
-#[cfg(feature = "ollama")]
-impl From<OllamaError> for Error {
-    fn from(err: OllamaError) -> Self {
-        Error::Ollama(Box::new(err))
     }
 }
 

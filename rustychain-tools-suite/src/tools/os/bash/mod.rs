@@ -1,13 +1,13 @@
-pub mod policy;
-pub mod input;
 pub mod args;
 pub mod executor;
+pub mod input;
+pub mod policy;
 pub mod tool;
 
-pub use policy::*;
-pub use input::*;
 pub use args::*;
 pub use executor::*;
+pub use input::*;
+pub use policy::*;
 pub use tool::*;
 
 use tokio::io::AsyncWriteExt;
@@ -20,12 +20,13 @@ async fn get_user_input_from_terminal(prompt: &str) -> rustychain::Result<String
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
         Ok(input)
-    }).await?
+    })
+    .await?
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::os::{args::CommandArgs, tool::CommandTool, policy::SecurityPolicy};
+    use crate::os::{args::CommandArgs, policy::SecurityPolicy, tool::CommandTool};
 
     #[test]
     fn test_security_policy_blocked_commands() {
@@ -38,7 +39,7 @@ mod tests {
     fn test_security_policy_whitelist() {
         let mut policy = SecurityPolicy::default();
         policy.allowed_commands = ["ls", "pwd"].iter().map(|s| s.to_string()).collect();
-        
+
         assert!(policy.is_command_allowed("ls").is_ok());
         assert!(policy.is_command_allowed("pwd").is_ok());
         assert!(policy.is_command_allowed("cat").is_err());

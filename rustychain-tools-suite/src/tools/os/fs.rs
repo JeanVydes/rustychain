@@ -3,8 +3,8 @@
 //! This module provides filesystem tools with security controls for agents.
 //! Each filesystem operation is implemented as an individual tool.
 
-use rustychain::{AnyFunction, FunctionDeclaration};
 use rustychain::llm::function::{FnDeclarator, FnExecutor};
+use rustychain::{AnyFunction, FunctionDeclaration};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -12,10 +12,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-
-pub fn all_filesystem_tools(
-    config: Arc<FileSystemConfig>,
-) -> Vec<Arc<dyn AnyFunction>> {
+pub fn all_filesystem_tools(config: Arc<FileSystemConfig>) -> Vec<Arc<dyn AnyFunction>> {
     vec![
         Arc::new(ListDirectoryTool::new(config.clone()).declare()),
         Arc::new(ShowTreeTool::new(config.clone()).declare()),

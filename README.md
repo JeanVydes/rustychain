@@ -89,9 +89,10 @@ llm.inference("Hello, how are you?")
 |--------|----------------|---------|----------------------|----------------------|----------|
 |OpenAI  |✅|✅|Depends on model|✅|✅|
 |Google  |✅|✅|Depends on model|✅|✅|
-|Ollama  |✅|✅|Depends on model|✅|❌|
+|Ollama  |✅|✅|Depends on model|✅|✅|
+|OpenRouter|✅|✅|Depends on model|✅|✅|
+|Any OpenAI compatible API (set base url for not listed here)|✅|✅|Depends on model|✅|✅|
 |Anthropic|❌|❌|❌|❌|❌|
-|OpenRouter|✅|✅|Depends on model|✅|❌|
 
 ## Tools
 

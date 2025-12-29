@@ -2,11 +2,32 @@ use std::pin::Pin;
 
 /// Patterns that indicate the command is waiting for user input
 pub const INPUT_PATTERNS: &[&str] = &[
-    "password:", "passphrase:", "[y/n]", "(y/n)", "yes/no",
-    "[yes/no]", "(yes/no)", "continue?", "proceed?", "confirm",
-    "enter", "input:", "prompt:", "username:", "user:", "login:",
-    "token:", "api key:", "secret:", "[sudo]", "are you sure",
-    "overwrite", "replace", "delete", "(y/n/a)", "[y/n/a]",
+    "password:",
+    "passphrase:",
+    "[y/n]",
+    "(y/n)",
+    "yes/no",
+    "[yes/no]",
+    "(yes/no)",
+    "continue?",
+    "proceed?",
+    "confirm",
+    "enter",
+    "input:",
+    "prompt:",
+    "username:",
+    "user:",
+    "login:",
+    "token:",
+    "api key:",
+    "secret:",
+    "[sudo]",
+    "are you sure",
+    "overwrite",
+    "replace",
+    "delete",
+    "(y/n/a)",
+    "[y/n/a]",
 ];
 
 /// Action to take when a command requests input
@@ -39,7 +60,9 @@ pub struct InputDetector {
 
 impl InputDetector {
     pub fn new(additional_patterns: Vec<String>) -> Self {
-        Self { additional_patterns }
+        Self {
+            additional_patterns,
+        }
     }
 
     pub fn find_pattern(&self, line: &str, custom_patterns: &[String]) -> Option<String> {
@@ -76,6 +99,10 @@ impl InputDetector {
 
 /// Callback type for input handling
 pub type InputCallback = Box<
-    dyn Fn(InputContext) -> Pin<Box<dyn std::future::Future<Output = rustychain::Result<InputAction>> + Send>>
-        + Send + Sync,
+    dyn Fn(
+            InputContext,
+        )
+            -> Pin<Box<dyn std::future::Future<Output = rustychain::Result<InputAction>> + Send>>
+        + Send
+        + Sync,
 >;

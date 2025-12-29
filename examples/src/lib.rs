@@ -7,6 +7,6 @@ pub mod embedding;
 pub mod full_custom_tools;
 pub mod inference;
 pub mod mcp;
+pub mod agent_os_control;
 pub mod streaming;
 pub mod tools;
-pub mod os_control;

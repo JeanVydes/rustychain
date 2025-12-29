@@ -13,31 +13,35 @@ pub struct EnvVar {
 pub struct CommandArgs {
     #[schemars(description = "The command to execute (e.g., 'ls', 'git', 'cargo').")]
     pub command: String,
-    
+
     #[schemars(description = "Arguments to pass to the command.")]
     #[serde(default)]
     pub args: Vec<String>,
-    
+
     #[schemars(description = "Working directory. If not provided, uses current directory.")]
     #[serde(default)]
     pub working_dir: Option<String>,
-    
+
     #[schemars(description = "Environment variables as name-value pairs.")]
     #[serde(default)]
     pub env: Vec<EnvVar>,
-    
-    #[schemars(description = "Timeout in seconds. Default is 300 (5 minutes). Set to 0 for no timeout.")]
+
+    #[schemars(
+        description = "Timeout in seconds. Default is 300 (5 minutes). Set to 0 for no timeout."
+    )]
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
-    
+
     #[schemars(description = "Run in background. Returns immediately with a process ID.")]
     #[serde(default)]
     pub background: bool,
-    
-    #[schemars(description = "Use shell (allows pipes, redirects). SECURITY RISK: Only enable if necessary.")]
+
+    #[schemars(
+        description = "Use shell (allows pipes, redirects). SECURITY RISK: Only enable if necessary."
+    )]
     #[serde(default)]
     pub use_shell: bool,
-    
+
     #[schemars(description = "Custom input patterns to detect.")]
     #[serde(default)]
     pub custom_input_patterns: Vec<String>,

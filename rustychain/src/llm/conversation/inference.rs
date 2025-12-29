@@ -21,6 +21,8 @@ pub struct Inference {
 
     pub finish_reason: Option<FinishReason>,
     pub usage: Option<UsageMetadata>,
+
+    pub context: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

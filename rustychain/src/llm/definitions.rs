@@ -1,5 +1,6 @@
 use crate::{GenerationConfig, providers::LLMProvider};
 use futures_core::stream::Stream;
+use secrecy::SecretString;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -14,7 +15,7 @@ pub struct LLM {
     pub model: String,
     pub system_prompt: String,
     pub provider: LLMProvider,
-    pub authorization: Option<String>,
+    pub authorization: Option<SecretString>,
     pub endpoint: Option<String>,
     pub tools: Vec<Arc<dyn AnyFunction>>,
 }

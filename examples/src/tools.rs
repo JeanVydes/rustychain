@@ -9,7 +9,9 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .set_system_prompt(
             "You are a helpful assistant that always uses tools to answer user queries.",
         )
-        .add_tool(rustychain_tools_suite::integrations::search::DuckDuckGoSearchTool::new().declare())
+        .add_tool(
+            rustychain_tools_suite::integrations::search::DuckDuckGoSearchTool::new().declare(),
+        )
         .build()?;
 
     let response = llm

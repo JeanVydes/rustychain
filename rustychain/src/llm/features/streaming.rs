@@ -1,7 +1,7 @@
 use crate::prelude::*;
+use crate::providers::ProviderAbstractionLayer;
 use futures_core::Stream;
 use futures_util::stream::{StreamExt, TryStreamExt};
-use ollama_rs::Ollama;
 use std::{pin::Pin, sync::Arc};
 
 #[async_trait::async_trait]
@@ -22,11 +22,29 @@ impl LLMStreaming for LLM {
         match self.provider {
             #[cfg(feature = "google")]
             LLMProvider::Google => {
-                let req = self.new_google_request(history, inference, &config)?;
+                use crate::providers::google::GoogleProvider;
+
+                let provider = GoogleProvider::new(
+                    self.endpoint
+                        .clone()
+                        .unwrap_or(self.provider.default_api_base().to_string()),
+                    self.authorization.clone(),
+                );
+
+                let chat_completion_req = crate::providers::ChatCompletionRequest {
+                    model: &self.model,
+                    messages: history,
+                    inference,
+                    config: &config,
+                    system_prompt: &self.system_prompt,
+                    tools: &self.tools,
+                };
+
+                let req = provider.new_chat_request(chat_completion_req)?;
                 let stream = req.execute_stream().await?;
                 let mapped = stream.into_stream().map(move |res| match res {
-                    Ok(gen_resp) => Ok(Inference::from_google_response(
-                        gen_resp,
+                    Ok(gen_resp) => Ok(GoogleProvider::to_inference_from_response(
+                        &gen_resp,
                         Some(config.clone()),
                     )),
                     Err(e) => Err(crate::Error::from(e)),
@@ -36,47 +54,49 @@ impl LLMStreaming for LLM {
             }
             #[cfg(feature = "openai")]
             LLMProvider::OpenAI => {
-                let mut client = self.get_openai_client()?;
-                let req = self.new_openai_stream_request(history, inference, &config)?;
-                let stream = client.chat_completion_stream(req).await?;
-                let mapped = stream.map(Inference::from_openai_stream_response);
-                Ok(Box::pin(mapped))
-            }
-            #[cfg(feature = "ollama")]
-            LLMProvider::Ollama => {
-                let req = self.new_ollama_request(history, inference, &config)?;
-                let res = Ollama::default().send_chat_messages_stream(req).await?;
-                let mapped = res.map(move |res| match res {
-                    Ok(ollama_msg) => Ok(Inference::from_ollama_response(
-                        ollama_msg,
-                        Some(config.clone()),
-                    )),
-                    Err(_e) => Err(crate::Error::Generic("Ollama stream error".to_owned())),
-                });
+                use crate::providers::openai::OpenAICompatibleProvider;
 
-                Ok(Box::pin(mapped))
-            }
-            #[cfg(feature = "anthropic")]
-            LLMProvider::Anthropic => Err(crate::Error::Generic(
-                "Streaming not yet implemented for this provider".to_owned(),
-            )),
-            #[cfg(feature = "openrouter")]
-            LLMProvider::OpenRouter => {
-                let client = self.get_openrouter_client()?;
-                let req = self.new_openrouter_request(history, inference, &config)?;
-                let res = client.stream_chat_completion(&req).await.map_err(|e| {
-                    crate::Error::Generic(format!("OpenRouter request failed: {}", e))
-                })?;
-                let mapped = res.map(move |res| match res {
-                    Ok(openrouter_chunk) => Ok(Inference::from_openrouter_response(
-                        &openrouter_chunk,
-                        Some(config.clone()),
-                    )),
+                let provider = OpenAICompatibleProvider::new(
+                    self.endpoint
+                        .clone()
+                        .unwrap_or(self.provider.default_api_base().to_string()),
+                    self.authorization.clone(),
+                );
+
+                let chat_completion_req = crate::providers::ChatCompletionRequest {
+                    model: &self.model,
+                    messages: history,
+                    inference,
+                    config: &config,
+                    system_prompt: &self.system_prompt,
+                    tools: &self.tools,
+                };
+
+                let req = provider.new_chat_request(chat_completion_req)?;
+
+                let stream = provider
+                    .client()?
+                    .chat()
+                    .create_stream(req.build().map_err(|e| {
+                        crate::Error::Generic(format!("OpenAI request build failed: {}", e))
+                    })?)
+                    .await
+                    .map_err(|e| crate::Error::Generic(format!("OpenAI request failed: {}", e)))?;
+
+                let mapped = stream.map(move |res| match res {
+                    Ok(chunk) => {
+                        let inference = OpenAICompatibleProvider::to_inference_from_stream_response(
+                            &chunk,
+                            Some(config.clone()),
+                        );
+                        Ok(inference)
+                    }
                     Err(e) => Err(crate::Error::Generic(format!(
-                        "OpenRouter stream error: {}",
+                        "OpenAI streaming error: {}",
                         e
                     ))),
                 });
+
                 Ok(Box::pin(mapped))
             }
             _ => Err(crate::Error::Unsupported(

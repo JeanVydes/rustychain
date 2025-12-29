@@ -3,14 +3,14 @@
 //! document splitting, and vector storage.
 extern crate self as rustychain;
 
-#[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
+#[cfg(any(feature = "openai", feature = "google"))]
 pub mod agent;
 pub mod chain;
 pub mod error;
-#[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
+#[cfg(any(feature = "openai", feature = "google"))]
 #[allow(ambiguous_glob_reexports)]
 pub mod execution;
-#[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
+#[cfg(any(feature = "openai", feature = "google"))]
 pub mod llm;
 pub mod orchestrator;
 pub mod providers;
@@ -22,7 +22,7 @@ pub mod util;
 pub mod templates;
 
 pub use error::*;
-#[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
+#[cfg(any(feature = "openai", feature = "google"))]
 #[allow(ambiguous_glob_reexports)]
 pub use llm::*;
 pub use splitters::*;
@@ -36,13 +36,13 @@ pub mod prelude {
     //! This module re-exports commonly used types and traits.
 
     pub use crate::error::Error;
-    #[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
+    #[cfg(any(feature = "openai", feature = "google"))]
     pub use crate::function::{
         AnyFunction, FnDeclarator, FnExecutor, FunctionDeclaration, FunctionResult,
     };
-    #[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
+    #[cfg(any(feature = "openai", feature = "google"))]
     pub use crate::inference::{Inference, InferenceContent};
-    #[cfg(any(feature = "openai", feature = "google", feature = "ollama"))]
+    #[cfg(any(feature = "openai", feature = "google"))]
     pub use crate::llm::{GenerationConfig, LLM, LLMEmbedding, LLMGeneration, LLMStreaming, Role};
     pub use crate::providers::LLMProvider;
     pub use crate::util::formatters::Cleaner;
