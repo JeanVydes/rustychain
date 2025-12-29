@@ -43,7 +43,7 @@ impl
             self.authorization
                 .as_ref()
                 .map(|s| s.expose_secret())
-                .unwrap_or(&"".to_string())
+                .unwrap_or(&"".to_string()),
         )
         .with_base_url(url::Url::from_str(&self.base_url)?);
 
@@ -359,7 +359,7 @@ impl
             .iter()
             .map(Self::to_provider_message)
             .collect();
-        history.push(Self::to_provider_message(&_req.inference));
+        history.push(Self::to_provider_message(_req.inference));
 
         let mut req = client
             .generate_content()
@@ -420,7 +420,7 @@ impl
             req = req.with_function_calling_mode(FunctionCallingMode::None);
             system_prompt.push_str(&format!(
                 "\n\nThe following tools are available to you:\n{}\n\n",
-                crate::util::tools_to_string(&_req.tools)
+                crate::util::tools_to_string(_req.tools)
             ));
         }
 

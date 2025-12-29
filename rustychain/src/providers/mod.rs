@@ -42,18 +42,6 @@ impl LLMProvider {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "google" => Some(LLMProvider::Google),
-            "openai" => Some(LLMProvider::OpenAI),
-            "anthropic" => Some(LLMProvider::Anthropic),
-            "ollama" => Some(LLMProvider::Ollama),
-            "bedrock" => Some(LLMProvider::Bedrock),
-            "openrouter" => Some(LLMProvider::OpenRouter),
-            _ => None,
-        }
-    }
-
     pub fn default_api_base(&self) -> &str {
         match self {
             LLMProvider::Google => DEFAULT_GOOGLE_API_BASE,
@@ -114,10 +102,7 @@ where
         mode: &crate::llm::tool_calling_mode::ToolCallingMode,
     ) -> FNMODE;
 
-    fn new_chat_request(
-        &self,
-        req: ChatCompletionRequest,
-    ) -> crate::Result<REQ>;
+    fn new_chat_request(&self, req: ChatCompletionRequest) -> crate::Result<REQ>;
 }
 
 #[derive(Debug, Clone)]

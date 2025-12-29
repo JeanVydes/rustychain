@@ -232,6 +232,7 @@ impl CommandExecutor {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn process_loop(
         &self,
         child: &mut tokio::process::Child,

@@ -31,9 +31,8 @@ pub struct RegexTool;
 #[async_trait::async_trait]
 impl FnExecutor<RegexArgs, serde_json::Value> for RegexTool {
     async fn call(&self, args: RegexArgs) -> rustychain::Result<serde_json::Value> {
-        let re = Regex::new(&args.pattern).map_err(|e| {
-            rustychain::Error::Input(format!("Invalid regex pattern: {}", e).into())
-        })?;
+        let re = Regex::new(&args.pattern)
+            .map_err(|e| rustychain::Error::Input(format!("Invalid regex pattern: {}", e)))?;
 
         match args.action.to_lowercase().as_str() {
             "find" => {

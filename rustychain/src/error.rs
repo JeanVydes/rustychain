@@ -21,7 +21,6 @@ pub enum Error {
     #[error("Gemini API Error: {0}")]
     Gemini(#[from] Box<ClientError>),
 
-
     #[cfg(feature = "openai")]
     #[error("OpenAI Error: {0}")]
     OpenAI(#[from] Box<async_openai::error::OpenAIError>),

@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod agent_os_control;
 pub mod basic;
 pub mod chain;
 pub mod complex_agent;
@@ -7,6 +8,5 @@ pub mod embedding;
 pub mod full_custom_tools;
 pub mod inference;
 pub mod mcp;
-pub mod agent_os_control;
 pub mod streaming;
 pub mod tools;

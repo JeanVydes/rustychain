@@ -1,7 +1,7 @@
-use std::{fmt::Debug, sync::Arc};
 use schemars::{JsonSchema, Schema};
 use serde::{Deserialize, Serialize, de};
 use serde_json::Value;
+use std::{fmt::Debug, sync::Arc};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct FunctionCall {

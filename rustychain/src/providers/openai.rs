@@ -22,7 +22,8 @@ use serde_json::Value;
 use std::sync::Arc;
 
 use crate::{
-    non_native_function_calling::NonNativeFunctionCallingSchema, providers::ProviderAbstractionLayer,
+    non_native_function_calling::NonNativeFunctionCallingSchema,
+    providers::ProviderAbstractionLayer,
 };
 
 pub struct OpenAICompatibleProvider {
@@ -104,7 +105,7 @@ impl OpenAICompatibleProvider {
             {
                 use crate::non_native_function_calling::extract_content_from_value_opt;
 
-                if let Ok(value) = serde_json::from_str::<Value>(&text) {
+                if let Ok(value) = serde_json::from_str::<Value>(text) {
                     if let Some(inner_content) = extract_content_from_value_opt(&value) {
                         message_parts.push(inner_content);
                     } else {
@@ -134,7 +135,7 @@ impl OpenAICompatibleProvider {
                     function_calls.push(crate::FunctionCall {
                         name: func.name.clone().unwrap_or_default(),
                         arguments: serde_json::to_value(&func.arguments).unwrap_or_default(),
-                        context: tc.id.clone().into(),
+                        context: tc.id.clone(),
                     });
                 }
             }
@@ -493,7 +494,7 @@ impl
             {
                 use crate::non_native_function_calling::extract_content_from_value_opt;
 
-                if let Ok(value) = serde_json::from_str::<Value>(&text) {
+                if let Ok(value) = serde_json::from_str::<Value>(text) {
                     if let Some(inner_content) = extract_content_from_value_opt(&value) {
                         message_parts.push(inner_content);
                     } else {
@@ -642,7 +643,7 @@ impl
             .map(Self::to_provider_message)
             .collect();
 
-        history.push(Self::to_provider_message(&_req.inference));
+        history.push(Self::to_provider_message(_req.inference));
 
         let mut req = async_openai::types::chat::CreateChatCompletionRequestArgs::default();
         let mut req = req
@@ -698,7 +699,7 @@ impl
         if _req.config.native_tool_handling {
             let tool_choice = Self::to_provider_tool_calling_mode(&_req.config.tool_calling_mode);
             req = req.tool_choice(tool_choice);
-            req = req.tools(Self::to_chat_completion_tools(&_req.tools))
+            req = req.tools(Self::to_chat_completion_tools(_req.tools))
         } else {
             req = req.tool_choice(
                 async_openai::types::chat::ChatCompletionToolChoiceOption::Mode(
@@ -708,7 +709,7 @@ impl
 
             system_prompt.push_str(&format!(
                 "\n\nThe following tools are available to you:\n{}\n\n",
-                crate::util::tools_to_string(&_req.tools)
+                crate::util::tools_to_string(_req.tools)
             ));
         }
 

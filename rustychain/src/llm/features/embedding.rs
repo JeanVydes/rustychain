@@ -33,7 +33,9 @@ impl LLMEmbedding for LLM {
             }
             #[cfg(feature = "openai")]
             LLMProvider::OpenAI | LLMProvider::Ollama | LLMProvider::OpenRouter => {
-                use crate::providers::{ProviderAbstractionLayer, openai::OpenAICompatibleProvider};
+                use crate::providers::{
+                    ProviderAbstractionLayer, openai::OpenAICompatibleProvider,
+                };
 
                 let provider = OpenAICompatibleProvider::new(
                     self.endpoint
