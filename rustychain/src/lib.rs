@@ -17,6 +17,7 @@ pub mod providers;
 pub mod splitters;
 pub mod storage;
 pub mod util;
+pub mod context;
 
 #[cfg(feature = "templates")]
 pub mod templates;
