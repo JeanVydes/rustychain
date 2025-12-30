@@ -3,7 +3,7 @@ use rustychain::agent::builder::AgentBuilder;
 use rustychain::agent::definitions::Agent;
 use rustychain::agent::status::AgentStatus;
 use rustychain::execution::context::Context;
-use rustychain::execution::events::{Event, InterceptionResponse, InterceptionToolCallResponse};
+use rustychain::execution::events::{Event, InterceptionCommand, InterceptionToolCallResponse};
 use rustychain::execution::graph::ExecutionGraph;
 use rustychain::execution::listeners::EventListener;
 use rustychain::prelude::*;
@@ -25,7 +25,7 @@ impl EventListener<String, ExecutionGraph, AgentState> for AuditLogger {
         &self,
         event: &Event,
         context: &Context<String, ExecutionGraph, AgentState>,
-    ) -> Option<InterceptionResponse> {
+    ) -> Option<InterceptionCommand> {
         match event {
             Event::ToolCallRequested { call, .. } => {
                 let mut state = context.state.lock().await;
@@ -70,7 +70,7 @@ impl EventListener<String, ExecutionGraph, AgentState> for ApprovalInterceptor {
         &self,
         event: &Event,
         _context: &Context<String, ExecutionGraph, AgentState>,
-    ) -> Option<InterceptionResponse> {
+    ) -> Option<InterceptionCommand> {
         if let Event::ToolCallRequested { call, .. } = event {
             if self.restricted_tools.contains(&call.name) {
                 println!("\n[APPROVAL REQUIRED]");
@@ -83,7 +83,7 @@ impl EventListener<String, ExecutionGraph, AgentState> for ApprovalInterceptor {
                 io::stdin().read_line(&mut input).unwrap();
 
                 match input.trim() {
-                    "y" => Some(InterceptionResponse::ToolCall(
+                    "y" => Some(InterceptionCommand::ToolCall(
                         InterceptionToolCallResponse::Continue,
                     )),
                     "m" => {
@@ -94,28 +94,28 @@ impl EventListener<String, ExecutionGraph, AgentState> for ApprovalInterceptor {
                         if let Ok(args) = serde_json::from_str(&new_args) {
                             let mut modified_call = call.clone();
                             modified_call.arguments = args;
-                            Some(InterceptionResponse::ToolCall(
+                            Some(InterceptionCommand::ToolCall(
                                 InterceptionToolCallResponse::Modify {
                                     call: modified_call,
                                 },
                             ))
                         } else {
                             println!("Invalid JSON, blocking call");
-                            Some(InterceptionResponse::ToolCall(
+                            Some(InterceptionCommand::ToolCall(
                                 InterceptionToolCallResponse::Block {
                                     reason: "Invalid modified arguments".to_string(),
                                 },
                             ))
                         }
                     }
-                    _ => Some(InterceptionResponse::ToolCall(
+                    _ => Some(InterceptionCommand::ToolCall(
                         InterceptionToolCallResponse::Block {
                             reason: "User denied execution".to_string(),
                         },
                     )),
                 }
             } else {
-                Some(InterceptionResponse::ToolCall(
+                Some(InterceptionCommand::ToolCall(
                     InterceptionToolCallResponse::Continue,
                 ))
             }

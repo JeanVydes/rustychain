@@ -1,6 +1,6 @@
 use crate::execution::events::Event;
 use crate::execution::{
-    context::Context, environment::ExecutionEnvironment, events::InterceptionResponse,
+    context::Context, environment::ExecutionEnvironment, events::InterceptionCommand,
 };
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -19,7 +19,7 @@ where
         &self,
         event: &Event,
         context: &Context<S, EV, T>,
-    ) -> Option<InterceptionResponse>;
+    ) -> Option<InterceptionCommand>;
 }
 
 pub type ArcEventListener<S, EV, T> = Arc<dyn EventListener<S, EV, T>>;
@@ -69,7 +69,7 @@ where
         &self,
         event: &Event<'a>,
         context: &Context<S, EV, T>,
-    ) -> Option<InterceptionResponse> {
+    ) -> Option<InterceptionCommand> {
         // First notify observers
         self.emit_observable(event, context).await;
 

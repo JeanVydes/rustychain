@@ -267,30 +267,30 @@ pub enum NodeUpdateType {
     ParentChanged { new_parent: Option<NodeId> },
 }
 
-/// Response from an interceptor listener
+/// Command from an interceptor listener
 #[derive(Debug, Clone)]
-pub enum InterceptionResponse {
+pub enum InterceptionCommand {
     // Tool-related interceptions
-    ToolCall(InterceptionToolCallResponse),
+    ToolCall(InterceptionToolCallCommand),
 
     // Inference-related interceptions
-    Inference(InterceptionInferenceResponse),
+    Inference(InterceptionInferenceCommand),
 
     // History/Context-related interceptions
-    History(InterceptionHistoryResponse),
+    History(InterceptionHistoryCommand),
 
     // Context management strategy interceptions
-    ContextManagement(InterceptionContextManagementResponse),
+    ContextManagement(InterceptionContextManagementCommand),
 
     // LLM request interceptions
-    LLMRequest(InterceptionLLMRequestResponse),
+    LLMRequest(InterceptionLLMRequestCommand),
 
     // General flow control
-    FlowControl(InterceptionFlowControlResponse),
+    FlowControl(InterceptionFlowControlCommand),
 }
 
 #[derive(Debug, Clone)]
-pub enum InterceptionToolCallResponse {
+pub enum InterceptionToolCallCommand {
     /// Continue with original tool call
     Continue,
 
@@ -310,7 +310,7 @@ pub enum InterceptionToolCallResponse {
 }
 
 #[derive(Debug, Clone)]
-pub enum InterceptionInferenceResponse {
+pub enum InterceptionInferenceCommand {
     /// Continue with original inference
     Continue,
 
@@ -328,7 +328,7 @@ pub enum InterceptionInferenceResponse {
 }
 
 #[derive(Debug, Clone)]
-pub enum InterceptionHistoryResponse {
+pub enum InterceptionHistoryCommand {
     /// Continue with original history
     Continue,
 
@@ -345,7 +345,7 @@ pub enum InterceptionHistoryResponse {
 }
 
 #[derive(Debug, Clone)]
-pub enum InterceptionContextManagementResponse {
+pub enum InterceptionContextManagementCommand {
     /// Continue with original history
     Continue,
 
@@ -359,7 +359,7 @@ pub enum InterceptionContextManagementResponse {
 }
 
 #[derive(Debug, Clone)]
-pub enum InterceptionLLMRequestResponse {
+pub enum InterceptionLLMRequestCommand {
     /// Continue with original request
     Continue,
 
@@ -373,12 +373,12 @@ pub enum InterceptionLLMRequestResponse {
         config: GenerationConfig,
     },
 
-    /// Skip LLM call and provide cached/mock response
-    UseCachedResponse { response: Inference },
+    /// Skip LLM call and provide cached/mock Command
+    UseCached { cached: Inference },
 }
 
 #[derive(Debug, Clone)]
-pub enum InterceptionFlowControlResponse {
+pub enum InterceptionFlowControlCommand {
     /// Continue normal execution
     Continue,
 

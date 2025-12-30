@@ -10,7 +10,7 @@ use crate::{
         context::Context,
         environment::ExecutionEnvironment,
         events::{
-            Event, InterceptionContextManagementResponse, InterceptionFlowControlResponse, InterceptionHistoryResponse, InterceptionInferenceResponse, InterceptionLLMRequestResponse, InterceptionResponse, InterceptionToolCallResponse
+            Event, InterceptionContextManagementCommand, InterceptionFlowControlCommand, InterceptionHistoryCommand, InterceptionInferenceCommand, InterceptionLLMRequestCommand, InterceptionCommand, InterceptionToolCallCommand
         },
         listeners::{EventListener, ListenerRegistry},
         node::{ExecutionNode, NodeId, NodeStatus, NodeType},
@@ -181,15 +181,15 @@ where
             .await
         {
             match response {
-                InterceptionResponse::Inference(InterceptionInferenceResponse::Skip) => {
+                InterceptionCommand::Inference(InterceptionInferenceCommand::Skip) => {
                     return Ok(self.status.clone());
                 }
-                InterceptionResponse::Inference(InterceptionInferenceResponse::Modify {
+                InterceptionCommand::Inference(InterceptionInferenceCommand::Modify {
                     inference: modified,
                 }) => {
                     return self.process_inference_node(node_id, modified).await;
                 }
-                InterceptionResponse::Inference(InterceptionInferenceResponse::ReplaceResult {
+                InterceptionCommand::Inference(InterceptionInferenceCommand::ReplaceResult {
                     result,
                 }) => {
                     let result_id = self
@@ -209,7 +209,7 @@ where
                         .transition_status(AgentStatus::Finished(Box::new(result)))
                         .await);
                 }
-                InterceptionResponse::FlowControl(InterceptionFlowControlResponse::Stop {
+                InterceptionCommand::FlowControl(InterceptionFlowControlCommand::Stop {
                     reason,
                 }) => {
                     return Ok(self.transition_status(AgentStatus::Faulted(reason)).await);
@@ -255,17 +255,17 @@ where
             .await
         {
             match response {
-                InterceptionResponse::History(InterceptionHistoryResponse::Replace {
+                InterceptionCommand::History(InterceptionHistoryCommand::Replace {
                     history: new_history,
                 }) => {
                     history = new_history;
                 }
-                InterceptionResponse::History(InterceptionHistoryResponse::Modify {
+                InterceptionCommand::History(InterceptionHistoryCommand::Modify {
                     history: modified,
                 }) => {
                     history = modified;
                 }
-                InterceptionResponse::History(InterceptionHistoryResponse::Inject { messages }) => {
+                InterceptionCommand::History(InterceptionHistoryCommand::Inject { messages }) => {
                     for (pos, msg) in messages.into_iter().rev() {
                         history.insert(pos, msg);
                     }
@@ -288,10 +288,10 @@ where
                 .await
             {
                 match response {
-                    InterceptionResponse::ContextManagement(
-                        InterceptionContextManagementResponse::SkipOptimization,
+                    InterceptionCommand::ContextManagement(
+                        InterceptionContextManagementCommand::SkipOptimization,
                     ) => false,
-                    InterceptionResponse::ContextManagement(InterceptionContextManagementResponse::UseStrategies {
+                    InterceptionCommand::ContextManagement(InterceptionContextManagementCommand::UseStrategies {
                         strategies: custom,
                     }) => {
                         // Apply custom strategies instead
@@ -352,18 +352,18 @@ where
             .await
         {
             match response {
-                InterceptionResponse::LLMRequest(
-                    InterceptionLLMRequestResponse::ModifyConfig { config: new_config },
+                InterceptionCommand::LLMRequest(
+                    InterceptionLLMRequestCommand::ModifyConfig { config: new_config },
                 ) => (inference.clone(), history.clone(), new_config),
-                InterceptionResponse::LLMRequest(
-                    InterceptionLLMRequestResponse::ReplaceRequest {
+                InterceptionCommand::LLMRequest(
+                    InterceptionLLMRequestCommand::ReplaceRequest {
                         inference: new_inf,
                         history: new_hist,
                         config: new_conf,
                     },
                 ) => (new_inf, new_hist, new_conf),
-                InterceptionResponse::LLMRequest(
-                    InterceptionLLMRequestResponse::UseCachedResponse { response: cached },
+                InterceptionCommand::LLMRequest(
+                    InterceptionLLMRequestCommand::UseCached { cached },
                 ) => {
                     // Skip LLM call entirely
                     let result_id = self
@@ -481,7 +481,7 @@ where
                 .await
             {
                 match response {
-                    InterceptionResponse::FlowControl(InterceptionFlowControlResponse::Stop {
+                    InterceptionCommand::FlowControl(InterceptionFlowControlCommand::Stop {
                         reason,
                     }) => {
                         return Ok(self.transition_status(AgentStatus::Faulted(reason)).await);
@@ -533,23 +533,23 @@ where
             };
 
             match self.emit_interceptable(event).await {
-                Some(InterceptionResponse::ToolCall(InterceptionToolCallResponse::Modify {
+                Some(InterceptionCommand::ToolCall(InterceptionToolCallCommand::Modify {
                     call: modified,
                 })) => {
                     executable_calls.push(modified);
                 }
-                Some(InterceptionResponse::ToolCall(InterceptionToolCallResponse::Block {
+                Some(InterceptionCommand::ToolCall(InterceptionToolCallCommand::Block {
                     reason,
                 })) => {
                     log::debug!("Tool call blocked: {}", reason);
                 }
-                Some(InterceptionResponse::ToolCall(
-                    InterceptionToolCallResponse::ReplaceResult { result: _ },
+                Some(InterceptionCommand::ToolCall(
+                    InterceptionToolCallCommand::ReplaceResult { result: _ },
                 )) => {
                     log::trace!("Replace not supported for ToolCallRequested");
                 }
                 None
-                | Some(InterceptionResponse::ToolCall(InterceptionToolCallResponse::Continue)) => {
+                | Some(InterceptionCommand::ToolCall(InterceptionToolCallCommand::Continue)) => {
                     executable_calls.push(call);
                 }
                 _ => {
@@ -688,8 +688,8 @@ where
                     };
 
                     match listeners.emit_interceptable(&event, &context).await {
-                        Some(InterceptionResponse::ToolCall(
-                            InterceptionToolCallResponse::ReplaceResult { result: new_result },
+                        Some(InterceptionCommand::ToolCall(
+                            InterceptionToolCallCommand::ReplaceResult { result: new_result },
                         )) => new_result,
                         _ => result,
                     }
@@ -723,7 +723,7 @@ where
     }
 
     /// Emit an interceptable event and get response
-    async fn emit_interceptable<'a>(&self, event: Event<'a>) -> Option<InterceptionResponse> {
+    async fn emit_interceptable<'a>(&self, event: Event<'a>) -> Option<InterceptionCommand> {
         self.listeners
             .emit_interceptable(&event, &self.context)
             .await
