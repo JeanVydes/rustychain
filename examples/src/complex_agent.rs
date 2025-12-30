@@ -3,7 +3,7 @@ use rustychain::agent::builder::AgentBuilder;
 use rustychain::agent::definitions::Agent;
 use rustychain::agent::status::AgentStatus;
 use rustychain::execution::context::Context;
-use rustychain::execution::events::{Event, InterceptionCommand, InterceptionToolCallResponse};
+use rustychain::execution::events::{Event, InterceptionCommand, InterceptionToolCallCommand};
 use rustychain::execution::graph::ExecutionGraph;
 use rustychain::execution::listeners::EventListener;
 use rustychain::prelude::*;
@@ -84,7 +84,7 @@ impl EventListener<String, ExecutionGraph, AgentState> for ApprovalInterceptor {
 
                 match input.trim() {
                     "y" => Some(InterceptionCommand::ToolCall(
-                        InterceptionToolCallResponse::Continue,
+                        InterceptionToolCallCommand::Continue,
                     )),
                     "m" => {
                         println!("Enter new arguments (JSON):");
@@ -95,28 +95,28 @@ impl EventListener<String, ExecutionGraph, AgentState> for ApprovalInterceptor {
                             let mut modified_call = call.clone();
                             modified_call.arguments = args;
                             Some(InterceptionCommand::ToolCall(
-                                InterceptionToolCallResponse::Modify {
+                                InterceptionToolCallCommand::Modify {
                                     call: modified_call,
                                 },
                             ))
                         } else {
                             println!("Invalid JSON, blocking call");
                             Some(InterceptionCommand::ToolCall(
-                                InterceptionToolCallResponse::Block {
+                                InterceptionToolCallCommand::Block {
                                     reason: "Invalid modified arguments".to_string(),
                                 },
                             ))
                         }
                     }
                     _ => Some(InterceptionCommand::ToolCall(
-                        InterceptionToolCallResponse::Block {
+                        InterceptionToolCallCommand::Block {
                             reason: "User denied execution".to_string(),
                         },
                     )),
                 }
             } else {
                 Some(InterceptionCommand::ToolCall(
-                    InterceptionToolCallResponse::Continue,
+                    InterceptionToolCallCommand::Continue,
                 ))
             }
         } else {
