@@ -10,9 +10,7 @@ use crate::{
         context::Context,
         environment::ExecutionEnvironment,
         events::{
-            Event, InterceptionFlowControlResponse, InterceptionHistoryResponse,
-            InterceptionInferenceResponse, InterceptionLLMRequestResponse, InterceptionResponse,
-            InterceptionToolCallResponse,
+            Event, InterceptionContextManagementResponse, InterceptionFlowControlResponse, InterceptionHistoryResponse, InterceptionInferenceResponse, InterceptionLLMRequestResponse, InterceptionResponse, InterceptionToolCallResponse
         },
         listeners::{EventListener, ListenerRegistry},
         node::{ExecutionNode, NodeId, NodeStatus, NodeType},
@@ -267,6 +265,11 @@ where
                 }) => {
                     history = modified;
                 }
+                InterceptionResponse::History(InterceptionHistoryResponse::Inject { messages }) => {
+                    for (pos, msg) in messages.into_iter().rev() {
+                        history.insert(pos, msg);
+                    }
+                }
                 _ => {}
             }
         }
@@ -285,10 +288,10 @@ where
                 .await
             {
                 match response {
-                    InterceptionResponse::History(
-                        InterceptionHistoryResponse::SkipOptimization,
+                    InterceptionResponse::ContextManagement(
+                        InterceptionContextManagementResponse::SkipOptimization,
                     ) => false,
-                    InterceptionResponse::History(InterceptionHistoryResponse::UseStrategies {
+                    InterceptionResponse::ContextManagement(InterceptionContextManagementResponse::UseStrategies {
                         strategies: custom,
                     }) => {
                         // Apply custom strategies instead
