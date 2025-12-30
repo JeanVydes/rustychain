@@ -33,9 +33,10 @@ pub struct Thought {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct UsageMetadata {
-    pub prompt_tokens: usize,
-    pub completion_tokens: usize,
-    pub total_tokens: usize,
+    pub prompt_tokens: Option<i32>,
+    pub thought_tokens: Option<i32>,
+    pub cached_tokens: Option<i32>,
+    pub total_tokens: Option<i32>,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]

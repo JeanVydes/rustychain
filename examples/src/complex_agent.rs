@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use rustychain::agent::builder::AgentBuilder;
-use rustychain::agent::definitions::{Agent, AgentStatus};
+use rustychain::agent::definitions::Agent;
+use rustychain::agent::status::AgentStatus;
 use rustychain::execution::context::Context;
-use rustychain::execution::events::{Event, InterceptionResponse};
+use rustychain::execution::events::{Event, InterceptionResponse, InterceptionToolCallResponse};
 use rustychain::execution::graph::ExecutionGraph;
 use rustychain::execution::listeners::EventListener;
 use rustychain::prelude::*;
@@ -31,9 +32,22 @@ impl EventListener<String, ExecutionGraph, AgentState> for AuditLogger {
                 state.tool_audit_log.push(call.name.clone());
                 println!("📝 Audit: Tool requested - {}", call.name);
             }
-            Event::Thinking { .. } => {
-                print!("💭");
-                io::stdout().flush().unwrap();
+            Event::InputInference { inference } => {
+                println!(
+                    "\n🔍 Inference Input: {}",
+                    inference.content.text.as_deref().unwrap_or("")
+                );
+            }
+            Event::InferenceResultReceived { inference, .. } => {
+                println!(
+                    "\n✅ Inference Result: {}",
+                    inference.content.text.as_deref().unwrap_or("")
+                );
+            }
+            Event::FunctionCallsResults { calls, results, .. } => {
+                for (call, result) in calls.iter().zip(results.iter()) {
+                    println!("\n🔧 Function Call: {} => Result: {:?}", call.name, result);
+                }
             }
             Event::StepCompleted { step, .. } => {
                 println!("\n✓ Step {} completed", step);
@@ -69,7 +83,9 @@ impl EventListener<String, ExecutionGraph, AgentState> for ApprovalInterceptor {
                 io::stdin().read_line(&mut input).unwrap();
 
                 match input.trim() {
-                    "y" => Some(InterceptionResponse::Continue),
+                    "y" => Some(InterceptionResponse::ToolCall(
+                        InterceptionToolCallResponse::Continue,
+                    )),
                     "m" => {
                         println!("Enter new arguments (JSON):");
                         let mut new_args = String::new();
@@ -78,22 +94,30 @@ impl EventListener<String, ExecutionGraph, AgentState> for ApprovalInterceptor {
                         if let Ok(args) = serde_json::from_str(&new_args) {
                             let mut modified_call = call.clone();
                             modified_call.arguments = args;
-                            Some(InterceptionResponse::Modify {
-                                call: modified_call,
-                            })
+                            Some(InterceptionResponse::ToolCall(
+                                InterceptionToolCallResponse::Modify {
+                                    call: modified_call,
+                                },
+                            ))
                         } else {
                             println!("Invalid JSON, blocking call");
-                            Some(InterceptionResponse::Block {
-                                reason: "Invalid modified arguments".to_string(),
-                            })
+                            Some(InterceptionResponse::ToolCall(
+                                InterceptionToolCallResponse::Block {
+                                    reason: "Invalid modified arguments".to_string(),
+                                },
+                            ))
                         }
                     }
-                    _ => Some(InterceptionResponse::Block {
-                        reason: "User denied execution".to_string(),
-                    }),
+                    _ => Some(InterceptionResponse::ToolCall(
+                        InterceptionToolCallResponse::Block {
+                            reason: "User denied execution".to_string(),
+                        },
+                    )),
                 }
             } else {
-                Some(InterceptionResponse::Continue)
+                Some(InterceptionResponse::ToolCall(
+                    InterceptionToolCallResponse::Continue,
+                ))
             }
         } else {
             None

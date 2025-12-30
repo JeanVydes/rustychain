@@ -62,7 +62,7 @@ impl std::fmt::Debug for NodeType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NodeStatus {
     Pending,
     Running,

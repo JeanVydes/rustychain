@@ -1,5 +1,6 @@
 use rustychain::agent::builder::AgentBuilder;
-use rustychain::agent::definitions::{Agent, AgentStatus};
+use rustychain::agent::definitions::Agent;
+use rustychain::agent::status::AgentStatus;
 use rustychain::execution::graph::ExecutionGraph;
 use rustychain::prelude::*;
 use rustychain_tools_suite::os::{FileSystemConfig, SecurityPolicy, all_filesystem_tools};

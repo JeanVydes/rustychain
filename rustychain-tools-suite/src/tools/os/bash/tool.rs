@@ -135,9 +135,7 @@ impl FnExecutor<CommandArgs, serde_json::Value> for CommandTool {
             let mut cmd = self.executor.build_command(&args);
             let child = cmd.spawn()?;
             let pid = child.id();
-
-            log::debug!("Background process started: PID={:?}", pid);
-
+            
             return Ok(serde_json::json!({
                 "status": "background",
                 "pid": pid,

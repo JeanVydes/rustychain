@@ -2,7 +2,7 @@
 
 use crate::{
     LLM,
-    agent::definitions::{Agent, AgentConfig},
+    agent::{config::AgentConfig, definitions::Agent},
     execution::{
         graph::ExecutionGraph,
         listeners::{ArcEventListener, EventListener, InterceptorEntry},

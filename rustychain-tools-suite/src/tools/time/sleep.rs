@@ -35,13 +35,6 @@ pub struct WaitResult {
 #[async_trait::async_trait]
 impl FnExecutor<WaitArgs, WaitResult> for WaitTool {
     async fn call(&self, args: WaitArgs) -> rustychain::Result<WaitResult> {
-        log::debug!(
-            "WaitTool called: sleeping for {} seconds. Reason: {:?}",
-            args.seconds,
-            args.reason
-        );
-
-        // Non-blocking sleep using tokio
         sleep(Duration::from_secs(args.seconds)).await;
 
         Ok(WaitResult {

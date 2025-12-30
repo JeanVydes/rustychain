@@ -63,7 +63,6 @@ pub struct RetrievalResult {
 #[async_trait::async_trait]
 impl FnExecutor<SimpleRetrievalArgs, RetrievalResult> for MongoRetrievalTool {
     async fn call(&self, args: SimpleRetrievalArgs) -> rustychain::Result<RetrievalResult> {
-        log::debug!("MongoRetrievalTool called with query: {}", args.query);
         let query = self.llm.embedding(&args.query, 1536).await?;
         let store = self.store.lock().await;
         let results = store.similarity_search(query, 10).await?;
@@ -81,10 +80,6 @@ impl FnExecutor<SimpleRetrievalArgs, RetrievalResult> for MongoRetrievalTool {
 #[async_trait::async_trait]
 impl FnExecutor<ComplexRetrievalArgs, RetrievalResult> for MongoRetrievalTool {
     async fn call(&self, args: ComplexRetrievalArgs) -> rustychain::Result<RetrievalResult> {
-        log::debug!(
-            "MongoRetrievalTool (Complex) called with query: {}",
-            args.query
-        );
         let query = self.llm.embedding(&args.query, 1536).await?;
         let store = self.store.lock().await;
         let context = store.search(query, args.config).await?;
@@ -102,8 +97,6 @@ impl FnExecutor<ComplexRetrievalArgs, RetrievalResult> for MongoRetrievalTool {
 #[async_trait::async_trait]
 impl FnExecutor<AugmentedArgs, serde_json::Value> for MongoAugmentedTool {
     async fn call(&self, args: AugmentedArgs) -> rustychain::Result<serde_json::Value> {
-        log::debug!("MongoAugmentedTool processing text into embeddings");
-
         let splitter = RecursiveCharacterTextSplitter::new(rustychain::SplitterConfig {
             chunk_size: 1024,
             chunk_overlap: 256,
@@ -129,8 +122,6 @@ impl FnExecutor<AugmentedArgs, serde_json::Value> for MongoAugmentedTool {
 
         let store = self.store.lock().await;
         store.add_documents_batch(documents).await?;
-
-        log::debug!("Documents successfully stored in MongoDB");
 
         Ok(serde_json::json!({
             "status": "Success",

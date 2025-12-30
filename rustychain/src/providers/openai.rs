@@ -22,7 +22,7 @@ use serde_json::Value;
 use std::sync::Arc;
 
 use crate::{
-    non_native_function_calling::NonNativeFunctionCallingSchema,
+    inference, non_native_function_calling::NonNativeFunctionCallingSchema,
     providers::ProviderAbstractionLayer,
 };
 
@@ -559,6 +559,25 @@ impl
             }
         }
 
+        let usage: Option<inference::UsageMetadata> = response.usage.as_ref().map(|u| {
+            let cached_tokens = u
+                .prompt_tokens_details
+                .as_ref()
+                .and_then(|b| b.cached_tokens.map(|v| v as i32));
+
+            let thought_tokens = u
+                .completion_tokens_details
+                .as_ref()
+                .and_then(|b| b.reasoning_tokens.map(|v| v as i32));
+
+            inference::UsageMetadata {
+                prompt_tokens: Some(u.prompt_tokens as i32),
+                thought_tokens,
+                cached_tokens,
+                total_tokens: Some(u.total_tokens as i32),
+            }
+        });
+
         crate::Inference {
             model: Some(response.model.clone()),
             content: crate::prelude::InferenceContent {
@@ -574,7 +593,9 @@ impl
             thoughts,
             function_calls,
             finish_reason,
-            ..Default::default()
+            usage,
+            context: serde_json::to_value(&response.id).ok(),
+            function_results: vec![], // Currently, we do not extract function results from standard responses.
         }
     }
 

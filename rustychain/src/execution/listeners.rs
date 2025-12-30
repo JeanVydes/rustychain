@@ -57,7 +57,7 @@ where
     }
 
     /// Emit an observable event to all observers
-    pub async fn emit_observable(&self, event: &Event, context: &Context<S, EV, T>) {
+    pub async fn emit_observable<'a>(&self, event: &Event<'a>, context: &Context<S, EV, T>) {
         let observers = self.observers.lock().await;
         for observer in observers.iter() {
             let _ = observer.on_event(event, context).await;
@@ -65,9 +65,9 @@ where
     }
 
     /// Emit an interceptable event and get the first interception response
-    pub async fn emit_interceptable(
+    pub async fn emit_interceptable<'a>(
         &self,
-        event: &Event,
+        event: &Event<'a>,
         context: &Context<S, EV, T>,
     ) -> Option<InterceptionResponse> {
         // First notify observers

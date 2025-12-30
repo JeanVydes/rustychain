@@ -240,6 +240,16 @@ pub struct EditFileArgs {
 #[derive(JsonSchema, Serialize, Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EditOperation {
+    ReplaceLinesFromColumn {
+        #[schemars(description = "Starting line number (1-indexed, inclusive).")]
+        start_line: usize,
+        #[schemars(description = "Ending line number (1-indexed, inclusive).")]
+        end_line: usize,
+        #[schemars(description = "Starting column number (1-indexed, inclusive).")]
+        start_column: usize,
+        #[schemars(description = "New content to replace the lines with.")]
+        content: String,
+    },
     /// Replace specific lines with new content
     ReplaceLines {
         #[schemars(description = "Starting line number (1-indexed, inclusive).")]
@@ -509,8 +519,6 @@ impl ListDirectoryTool {
 #[async_trait::async_trait]
 impl FnExecutor<ListDirectoryArgs, ListDirectoryResult> for ListDirectoryTool {
     async fn call(&self, args: ListDirectoryArgs) -> rustychain::Result<ListDirectoryResult> {
-        log::debug!("ListDirectoryTool called with path: {}", args.path);
-
         let path = self.config.validate_path(&args.path)?;
 
         if !path.is_dir() {
@@ -667,8 +675,6 @@ fn build_tree(
 #[async_trait::async_trait]
 impl FnExecutor<ShowTreeArgs, TreeResult> for ShowTreeTool {
     async fn call(&self, args: ShowTreeArgs) -> rustychain::Result<TreeResult> {
-        log::debug!("ShowTreeTool called with path: {}", args.path);
-
         let path = self.config.validate_path(&args.path)?;
 
         if !path.is_dir() {
@@ -732,8 +738,6 @@ impl ReadFileTool {
 #[async_trait::async_trait]
 impl FnExecutor<ReadFileArgs, ReadFileResult> for ReadFileTool {
     async fn call(&self, args: ReadFileArgs) -> rustychain::Result<ReadFileResult> {
-        log::debug!("ReadFileTool called with path: {}", args.path);
-
         let path = self.config.validate_path(&args.path)?;
 
         if !path.is_file() {
@@ -841,8 +845,6 @@ impl WriteFileTool {
 #[async_trait::async_trait]
 impl FnExecutor<WriteFileArgs, FileOperationResult> for WriteFileTool {
     async fn call(&self, args: WriteFileArgs) -> rustychain::Result<FileOperationResult> {
-        log::debug!("WriteFileTool called with path: {}", args.path);
-
         let path = self.config.validate_path(&args.path)?;
 
         if args.content.len() > self.config.max_file_size {
@@ -902,8 +904,6 @@ impl CreateFileTool {
 #[async_trait::async_trait]
 impl FnExecutor<CreateFileArgs, FileOperationResult> for CreateFileTool {
     async fn call(&self, args: CreateFileArgs) -> rustychain::Result<FileOperationResult> {
-        log::debug!("CreateFileTool called with path: {}", args.path);
-
         let path = self.config.validate_path(&args.path)?;
 
         if path.exists() {
@@ -964,11 +964,6 @@ impl ConcatenateFilesTool {
 #[async_trait::async_trait]
 impl FnExecutor<ConcatenateFilesArgs, ConcatenateResult> for ConcatenateFilesTool {
     async fn call(&self, args: ConcatenateFilesArgs) -> rustychain::Result<ConcatenateResult> {
-        log::debug!(
-            "ConcatenateFilesTool called with {} files",
-            args.paths.len()
-        );
-
         let separator = args.separator.unwrap_or_else(|| "\n---\n".to_string());
         let mut concatenated = String::new();
         let mut total_size = 0u64;
@@ -1037,8 +1032,6 @@ impl EditFileTool {
 #[async_trait::async_trait]
 impl FnExecutor<EditFileArgs, EditResult> for EditFileTool {
     async fn call(&self, args: EditFileArgs) -> rustychain::Result<EditResult> {
-        log::debug!("EditFileTool called with path: {}", args.path);
-
         let path = self.config.validate_path(&args.path)?;
 
         if !path.is_file() {
@@ -1059,6 +1052,42 @@ impl FnExecutor<EditFileArgs, EditResult> for EditFileTool {
 
         // Perform the edit operation
         match args.operation {
+            EditOperation::ReplaceLinesFromColumn {
+                start_line,
+                end_line,
+                start_column,
+                content,
+            } => {
+                if start_line == 0 || end_line == 0 || start_line > end_line || start_column == 0 {
+                    return Err(rustychain::Error::Input(
+                        "Invalid line or column range: lines are 1-indexed and start must be <= end; columns are 1-indexed"
+                            .to_string(),
+                    ));
+                }
+
+                let start_idx = (start_line - 1).min(lines.len());
+                let end_idx = end_line.min(lines.len());
+
+                if start_idx >= lines.len() {
+                    return Err(rustychain::Error::Input(format!(
+                        "Start line {} is beyond end of file (total lines: {})",
+                        start_line,
+                        lines.len()
+                    )));
+                }
+
+                for line_num in start_idx..end_idx {
+                    let line = &mut lines[line_num];
+                    let col_idx = (start_column - 1).min(line.len());
+                    let new_line = format!(
+                        "{}{}",
+                        &line[..col_idx],
+                        content.lines().next().unwrap_or("")
+                    );
+                    *line = new_line;
+                    lines_affected += 1;
+                }
+            }
             EditOperation::ReplaceLines {
                 start,
                 end,
@@ -1260,8 +1289,6 @@ impl SearchInFileTool {
 #[async_trait::async_trait]
 impl FnExecutor<SearchInFileArgs, SearchResult> for SearchInFileTool {
     async fn call(&self, args: SearchInFileArgs) -> rustychain::Result<SearchResult> {
-        log::debug!("SearchInFileTool called with path: {}", args.path);
-
         let path = self.config.validate_path(&args.path)?;
 
         if !path.is_file() {
@@ -1332,8 +1359,6 @@ impl CreateDirectoryTool {
 #[async_trait::async_trait]
 impl FnExecutor<CreateDirectoryArgs, FileOperationResult> for CreateDirectoryTool {
     async fn call(&self, args: CreateDirectoryArgs) -> rustychain::Result<FileOperationResult> {
-        log::debug!("CreateDirectoryTool called with path: {}", args.path);
-
         let path = self.config.validate_path(&args.path)?;
 
         if path.exists() {
@@ -1382,8 +1407,6 @@ impl DeleteTool {
 #[async_trait::async_trait]
 impl FnExecutor<DeleteArgs, FileOperationResult> for DeleteTool {
     async fn call(&self, args: DeleteArgs) -> rustychain::Result<FileOperationResult> {
-        log::debug!("DeleteTool called with path: {}", args.path);
-
         let path = self.config.validate_path(&args.path)?;
 
         if !path.exists() {
@@ -1439,8 +1462,6 @@ impl MoveTool {
 #[async_trait::async_trait]
 impl FnExecutor<MoveArgs, FileOperationResult> for MoveTool {
     async fn call(&self, args: MoveArgs) -> rustychain::Result<FileOperationResult> {
-        log::debug!("MoveTool called: {} -> {}", args.source, args.destination);
-
         let source_path = self.config.validate_path(&args.source)?;
         let dest_path = self.config.validate_path(&args.destination)?;
 
@@ -1513,8 +1534,6 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
 #[async_trait::async_trait]
 impl FnExecutor<CopyArgs, FileOperationResult> for CopyTool {
     async fn call(&self, args: CopyArgs) -> rustychain::Result<FileOperationResult> {
-        log::debug!("CopyTool called: {} -> {}", args.source, args.destination);
-
         let source_path = self.config.validate_path(&args.source)?;
         let dest_path = self.config.validate_path(&args.destination)?;
 
@@ -1579,8 +1598,6 @@ impl FileInfoTool {
 #[async_trait::async_trait]
 impl FnExecutor<FileInfoArgs, FileInfo> for FileInfoTool {
     async fn call(&self, args: FileInfoArgs) -> rustychain::Result<FileInfo> {
-        log::debug!("FileInfoTool called with path: {}", args.path);
-
         let path = self.config.validate_path(&args.path)?;
 
         if !path.exists() {

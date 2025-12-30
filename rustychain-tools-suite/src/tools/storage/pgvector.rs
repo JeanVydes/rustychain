@@ -107,7 +107,6 @@ pub struct RetrievalResult {
 #[async_trait::async_trait]
 impl FnExecutor<SimpleRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool {
     async fn call(&self, args: SimpleRetrievalArgs) -> rustychain::Result<RetrievalResult> {
-        log::debug!("RetrievalTool called with args: {:?}", args);
         let query = self.llm.embedding(&args.query, 1536).await?;
         let store = self.store.lock().await;
         let results = store.similarity_search(query, 10).await?;
@@ -125,8 +124,6 @@ impl FnExecutor<SimpleRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool 
 #[async_trait::async_trait]
 impl FnExecutor<ComplexRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool {
     async fn call(&self, args: ComplexRetrievalArgs) -> rustychain::Result<RetrievalResult> {
-        log::debug!("RetrievalTool called with args: {:?}", args);
-        log::debug!("Generating embedding for query: {}", args.query);
         let query = self.llm.embedding(&args.query, 1536).await?;
         let store = self.store.lock().await;
         let context = store.search(query, args.config).await?;
@@ -144,8 +141,6 @@ impl FnExecutor<ComplexRetrievalArgs, RetrievalResult> for PgVectorRetrievalTool
 #[async_trait::async_trait]
 impl FnExecutor<AugmentedArgs, serde_json::Value> for PgVectorAugmentedTool {
     async fn call(&self, args: AugmentedArgs) -> rustychain::Result<serde_json::Value> {
-        log::debug!("Generating embedding for query: {}", args.text);
-
         let splitter = RecursiveCharacterTextSplitter::new(rustychain::SplitterConfig {
             chunk_size: 1024,
             chunk_overlap: 256,
@@ -175,9 +170,7 @@ impl FnExecutor<AugmentedArgs, serde_json::Value> for PgVectorAugmentedTool {
             .collect::<Vec<_>>();
 
         store.add_documents_batch(documents).await?;
-
-        log::debug!("Document added successfully");
-
+        
         Ok(serde_json::json!({
             "status": "Document added successfully"
         }))

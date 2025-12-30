@@ -79,8 +79,6 @@ impl CommandExecutor {
         let start_time = std::time::Instant::now();
         let mut cmd = self.build_command(&args);
 
-        log::debug!("Executing: {} {:?}", args.command, args.args);
-
         let mut child = cmd.spawn()?;
 
         let stdin = child
@@ -214,7 +212,6 @@ impl CommandExecutor {
                 match reader.read_line(&mut line).await {
                     Ok(0) => break, // EOF
                     Ok(_) => {
-                        log::debug!("{}: {}", source, line.trim_end());
                         output.lock().await.push_str(&line);
 
                         if let Some(pattern) = detector.find_pattern(&line, &patterns) {
@@ -250,9 +247,7 @@ impl CommandExecutor {
                 tokio::select! {
                     biased;
 
-                    Some((source, line, pattern)) = prompt_rx.recv() => {
-                        log::debug!("Input prompt detected in {}: {:?}", source, pattern);
-
+                    Some((_, line, pattern)) = prompt_rx.recv() => {
                         let context = InputContext {
                             prompt: line.clone(),
                             stdout_so_far: full_stdout.lock().await.clone(),
@@ -318,7 +313,7 @@ impl CommandExecutor {
                 let _ = child.kill().await;
             }
             InputAction::Skip => {
-                log::debug!("Skipping input prompt");
+                // Do nothing    
             }
             InputAction::Interrupt => {
                 #[cfg(unix)]

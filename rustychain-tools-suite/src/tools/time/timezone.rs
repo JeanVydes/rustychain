@@ -39,13 +39,7 @@ impl FnExecutor<ClockArgs, ClockResult> for ClockTool {
                     let localized = now.with_timezone(&tz);
                     (localized.to_rfc3339(), tz_str)
                 }
-                Err(_) => {
-                    log::warn!(
-                        "Invalid timezone provided: {}. Falling back to UTC.",
-                        tz_str
-                    );
-                    (now.to_rfc3339(), "UTC".to_string())
-                }
+                Err(_) => (now.to_rfc3339(), "UTC".to_string()),
             },
             None => (now.to_rfc3339(), "UTC".to_string()),
         };

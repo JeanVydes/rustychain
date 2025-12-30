@@ -1,41 +1,23 @@
-// agent.rs
-
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::Mutex;
 
 use crate::{
-    Error, FunctionCall, FunctionResult, GenerationConfig, Inference, LLM,
+    Error, FunctionCall, FunctionResult, Inference, LLM,
+    agent::{config::AgentConfig, status::AgentStatus},
+    context::manager::ContextManager,
     execution::{
         context::Context,
         environment::ExecutionEnvironment,
-        events::{Event, InterceptionResponse},
+        events::{
+            Event, InterceptionFlowControlResponse, InterceptionHistoryResponse,
+            InterceptionInferenceResponse, InterceptionLLMRequestResponse, InterceptionResponse,
+            InterceptionToolCallResponse,
+        },
         listeners::{EventListener, ListenerRegistry},
         node::{ExecutionNode, NodeId, NodeStatus, NodeType},
     },
 };
-
-#[derive(Debug, Clone)]
-pub enum AgentStatus {
-    Idle,
-    Executing,
-    Finished(Box<Inference>),
-    Faulted(String),
-}
-
-#[derive(Debug, Clone)]
-pub struct AgentConfig {
-    pub max_iterations: usize,
-    pub generation_config: GenerationConfig,
-}
-
-impl Default for AgentConfig {
-    fn default() -> Self {
-        Self {
-            max_iterations: 50,
-            generation_config: GenerationConfig::default(),
-        }
-    }
-}
 
 pub struct Agent<S, EV, T>
 where
@@ -50,6 +32,7 @@ where
     config: AgentConfig,
     status: AgentStatus,
     iterations: usize,
+    turn_number: usize,
     root: Option<NodeId>,
 }
 
@@ -74,6 +57,7 @@ where
             config: AgentConfig::default(),
             status: AgentStatus::Idle,
             iterations: 0,
+            turn_number: 0,
             root: None,
         }
     }
@@ -94,7 +78,7 @@ where
             (AgentStatus::Idle, Some(inf)) => self.start_turn(inf).await,
             (AgentStatus::Executing, None) => self.execute_step().await,
             (AgentStatus::Finished(_) | AgentStatus::Faulted(_), Some(inf)) => {
-                self.soft_reset();
+                self.soft_reset().await;
                 self.start_turn(inf).await
             }
             _ => Err(Error::Internal("Invalid state transition".into())),
@@ -102,33 +86,68 @@ where
     }
 
     async fn start_turn(&mut self, input: Inference) -> crate::Result<AgentStatus> {
-        self.emit_observable(Event::Started {
-            message: "Processing user input".to_string(),
+        self.turn_number += 1;
+
+        // Emit turn started event
+        self.emit_observable(Event::TurnStarted {
+            turn_number: self.turn_number,
+            inference: &input,
         })
         .await;
+
+        self.emit_observable(Event::InputInference { inference: &input })
+            .await;
 
         let parent = self.get_last_node().await;
         let node_id = self.create_node(NodeType::Inference(input), parent).await?;
         self.set_current_node(node_id).await;
-        self.status = AgentStatus::Executing;
+
+        self.transition_status(AgentStatus::Executing).await;
+
         self.execute_step().await
     }
 
     async fn execute_step(&mut self) -> crate::Result<AgentStatus> {
+        // Check iteration limit
         if self.iterations >= self.config.max_iterations {
-            return Ok(self.transition_to(AgentStatus::Faulted("Max iterations reached".into())));
+            let reason = format!("Max iterations ({}) reached", self.config.max_iterations);
+
+            self.emit_observable(Event::Faulted {
+                reason: reason.clone(),
+                iteration: self.iterations,
+                node_id: self.context.current_node.read().await.clone(),
+            })
+            .await;
+
+            return Ok(self.transition_status(AgentStatus::Faulted(reason)).await);
         }
+
+        // Emit warning if approaching limit
+        let remaining = self.config.max_iterations - self.iterations;
+        if remaining <= self.config.iteration_warning_threshold {
+            self.emit_observable(Event::MaxIterationsWarning {
+                current: self.iterations,
+                max: self.config.max_iterations,
+                remaining,
+            })
+            .await;
+        }
+
         self.iterations += 1;
 
         let current_id = self.get_current_node_id().await?;
-        let node = self.get_node(&current_id).await?;
 
-        self.emit_observable(Event::Thinking {
-            node_id: current_id.clone(),
+        // Emit iteration started
+        self.emit_observable(Event::IterationStarted {
+            iteration: self.iterations,
+            current_node: current_id.clone(),
         })
         .await;
 
-        match node.node_type {
+        let iteration_start = Instant::now();
+        let node = self.get_node(&current_id).await?;
+
+        let result = match node.node_type {
             NodeType::Inference(inf) => self.process_inference_node(&current_id, inf).await,
             NodeType::ToolResults(_) => self.synthesize_results(&current_id).await,
             NodeType::InferenceResult(ref res) if res.has_function_calls() => {
@@ -136,7 +155,17 @@ where
                     .await
             }
             _ => Ok(self.status.clone()),
-        }
+        };
+
+        // Emit iteration completed
+        self.emit_observable(Event::IterationCompleted {
+            iteration: self.iterations,
+            node_id: current_id,
+            duration: iteration_start.elapsed(),
+        })
+        .await;
+
+        result
     }
 
     #[async_recursion::async_recursion]
@@ -145,11 +174,65 @@ where
         node_id: &NodeId,
         inference: Inference,
     ) -> crate::Result<AgentStatus> {
+        // Emit about to start (interceptable)
+        if let Some(response) = self
+            .emit_interceptable(Event::InferenceAboutToStart {
+                node_id: node_id.clone(),
+                inference: &inference,
+            })
+            .await
+        {
+            match response {
+                InterceptionResponse::Inference(InterceptionInferenceResponse::Skip) => {
+                    return Ok(self.status.clone());
+                }
+                InterceptionResponse::Inference(InterceptionInferenceResponse::Modify {
+                    inference: modified,
+                }) => {
+                    return self.process_inference_node(node_id, modified).await;
+                }
+                InterceptionResponse::Inference(InterceptionInferenceResponse::ReplaceResult {
+                    result,
+                }) => {
+                    let result_id = self
+                        .create_node(
+                            NodeType::InferenceResult(result.clone()),
+                            Some(node_id.clone()),
+                        )
+                        .await?;
+
+                    self.set_current_node(result_id.clone()).await;
+                    self.update_node_status(&result_id, NodeStatus::Completed)
+                        .await?;
+                    self.update_node_status(node_id, NodeStatus::Completed)
+                        .await?;
+
+                    return Ok(self
+                        .transition_status(AgentStatus::Finished(Box::new(result)))
+                        .await);
+                }
+                InterceptionResponse::FlowControl(InterceptionFlowControlResponse::Stop {
+                    reason,
+                }) => {
+                    return Ok(self.transition_status(AgentStatus::Faulted(reason)).await);
+                }
+                _ => {}
+            }
+        }
+
+        self.emit_observable(Event::InferenceStarted {
+            node_id: node_id.clone(),
+            inference: &inference,
+        })
+        .await;
+
+        let inference_start = Instant::now();
         self.update_node_status(node_id, NodeStatus::Running)
             .await?;
         let node = self.get_node(node_id).await?;
 
-        let history = if let Some(parent_id) = &node.parent {
+        // Build history
+        let mut history = if let Some(parent_id) = &node.parent {
             self.context
                 .runtime
                 .read()
@@ -160,13 +243,194 @@ where
             Vec::new()
         };
 
-        let result = self
+        let original_length = history.len();
+        let estimated_tokens = self.estimate_tokens(&history);
+
+        // Emit history built (interceptable)
+        if let Some(response) = self
+            .emit_interceptable(Event::HistoryBuilt {
+                node_id: node_id.clone(),
+                history: &history,
+                message_count: original_length,
+                estimated_tokens,
+            })
+            .await
+        {
+            match response {
+                InterceptionResponse::History(InterceptionHistoryResponse::Replace {
+                    history: new_history,
+                }) => {
+                    history = new_history;
+                }
+                InterceptionResponse::History(InterceptionHistoryResponse::Modify {
+                    history: modified,
+                }) => {
+                    history = modified;
+                }
+                _ => {}
+            }
+        }
+
+        // Apply context management if configured
+        if let Some(manager) = &self.config.context_management {
+            let optimization_start = Instant::now();
+            let strategies = manager.strategies();
+
+            // Emit optimization started (interceptable)
+            let should_optimize = if let Some(response) = self
+                .emit_interceptable(Event::ContextOptimizationStarted {
+                    original_length,
+                    strategies,
+                })
+                .await
+            {
+                match response {
+                    InterceptionResponse::History(
+                        InterceptionHistoryResponse::SkipOptimization,
+                    ) => false,
+                    InterceptionResponse::History(InterceptionHistoryResponse::UseStrategies {
+                        strategies: custom,
+                    }) => {
+                        // Apply custom strategies instead
+                        let custom_manager = ContextManager::with_strategies(custom.clone());
+                        custom_manager.apply_mut(&mut history).await?;
+                        false // Skip normal optimization
+                    }
+                    _ => true,
+                }
+            } else {
+                true
+            };
+
+            if should_optimize {
+                // Apply each strategy and emit events
+                for (idx, strategy) in strategies.iter().enumerate() {
+                    let before_len = history.len();
+                    let strategy_start = Instant::now();
+
+                    let single_manager = ContextManager::with_strategy(strategy.clone());
+                    single_manager.apply_mut(&mut history).await?;
+
+                    let after_len = history.len();
+
+                    self.emit_observable(Event::ContextStrategyApplied {
+                        strategy_index: idx,
+                        strategy_name: format!("{:?}", strategy),
+                        before_length: before_len,
+                        after_length: after_len,
+                        duration: strategy_start.elapsed(),
+                    })
+                    .await;
+                }
+            }
+
+            let optimized_length = history.len();
+            let total_duration = optimization_start.elapsed();
+
+            self.emit_observable(Event::ContextOptimized {
+                original_length,
+                optimized_length,
+                applied_strategies: strategies.to_vec(),
+                total_duration,
+            })
+            .await;
+        }
+
+        // Prepare LLM request
+        let config = self.config.generation_config.clone();
+
+        // Emit LLM request about to send (interceptable)
+        let (final_inference, final_history, final_config) = if let Some(response) = self
+            .emit_interceptable(Event::LLMRequestAboutToSend {
+                inference: &inference,
+                history: &history,
+                config: &config,
+            })
+            .await
+        {
+            match response {
+                InterceptionResponse::LLMRequest(
+                    InterceptionLLMRequestResponse::ModifyConfig { config: new_config },
+                ) => (inference.clone(), history.clone(), new_config),
+                InterceptionResponse::LLMRequest(
+                    InterceptionLLMRequestResponse::ReplaceRequest {
+                        inference: new_inf,
+                        history: new_hist,
+                        config: new_conf,
+                    },
+                ) => (new_inf, new_hist, new_conf),
+                InterceptionResponse::LLMRequest(
+                    InterceptionLLMRequestResponse::UseCachedResponse { response: cached },
+                ) => {
+                    // Skip LLM call entirely
+                    let result_id = self
+                        .create_node(
+                            NodeType::InferenceResult(cached.clone()),
+                            Some(node_id.clone()),
+                        )
+                        .await?;
+
+                    self.set_current_node(result_id.clone()).await;
+                    self.update_node_status(&result_id, NodeStatus::Completed)
+                        .await?;
+                    self.update_node_status(node_id, NodeStatus::Completed)
+                        .await?;
+
+                    if cached.has_function_calls() {
+                        return self
+                            .execute_tool_batch(&result_id, cached.function_calls)
+                            .await;
+                    } else {
+                        return Ok(self
+                            .transition_status(AgentStatus::Finished(Box::new(cached)))
+                            .await);
+                    }
+                }
+                _ => (inference.clone(), history.clone(), config),
+            }
+        } else {
+            (inference, history, config)
+        };
+
+        // Emit LLM request sent
+        self.emit_observable(Event::LLMRequestSent {
+            message_count: final_history.len() + 1,
+            estimated_tokens: self.estimate_tokens(&final_history),
+            model: self.llm.model.clone(),
+        })
+        .await;
+
+        let llm_start = Instant::now();
+
+        // Make LLM call
+        let result = match self
             .llm
-            .inference(inference)
-            .with_history(&history)
-            .with_config(self.config.generation_config.clone())
+            .inference(final_inference)
+            .with_history(&final_history)
+            .with_config(final_config)
             .generate()
-            .await?;
+            .await
+        {
+            Ok(res) => res,
+            Err(e) => {
+                self.transition_status(AgentStatus::Faulted(format!("LLM request failed: {}", e)))
+                    .await;
+
+                return Err(e);
+            }
+        };
+
+        let llm_duration = llm_start.elapsed();
+
+        // Emit LLM request completed
+        self.emit_observable(Event::LLMRequestCompleted {
+            result: &result,
+            duration: llm_duration,
+        })
+        .await;
+
+        self.emit_observable(Event::InferenceUsageMetadata(result.usage.clone()))
+            .await;
 
         let result_id = self
             .create_node(
@@ -174,11 +438,27 @@ where
                 Some(node_id.clone()),
             )
             .await?;
+
+        self.emit_observable(Event::InferenceResultReceived {
+            node_id: result_id.clone(),
+            inference: &result,
+        })
+        .await;
+
         self.set_current_node(result_id.clone()).await;
         self.update_node_status(&result_id, NodeStatus::Completed)
             .await?;
         self.update_node_status(node_id, NodeStatus::Completed)
             .await?;
+
+        let inference_duration = inference_start.elapsed();
+
+        self.emit_observable(Event::InferenceCompleted {
+            node_id: result_id.clone(),
+            inference: &result,
+            duration: inference_duration,
+        })
+        .await;
 
         self.emit_observable(Event::StepCompleted {
             step: self.iterations,
@@ -192,12 +472,35 @@ where
         } else {
             self.update_conversation_root().await;
 
-            self.emit_observable(Event::Finished {
-                inference: result.clone(),
+            // Emit about to finish (interceptable)
+            if let Some(response) = self
+                .emit_interceptable(Event::AboutToFinish { inference: &result })
+                .await
+            {
+                match response {
+                    InterceptionResponse::FlowControl(InterceptionFlowControlResponse::Stop {
+                        reason,
+                    }) => {
+                        return Ok(self.transition_status(AgentStatus::Faulted(reason)).await);
+                    }
+                    _ => {}
+                }
+            }
+
+            self.emit_observable(Event::Finished { inference: &result })
+                .await;
+
+            // Emit turn completed
+            self.emit_observable(Event::TurnCompleted {
+                turn_number: self.turn_number,
+                total_iterations: self.iterations,
+                final_node: result_id,
             })
             .await;
 
-            Ok(self.transition_to(AgentStatus::Finished(Box::new(result))))
+            Ok(self
+                .transition_status(AgentStatus::Finished(Box::new(result)))
+                .await)
         }
     }
 
@@ -207,6 +510,17 @@ where
         parent_id: &NodeId,
         calls: Vec<FunctionCall>,
     ) -> crate::Result<AgentStatus> {
+        let tool_names: Vec<String> = calls.iter().map(|c| c.name.clone()).collect();
+
+        // Emit tool batch started
+        self.emit_observable(Event::ToolBatchStarted {
+            node_id: parent_id.clone(),
+            call_count: calls.len(),
+            tool_names,
+        })
+        .await;
+
+        let batch_start = Instant::now();
         let mut executable_calls = Vec::new();
 
         for call in calls {
@@ -216,17 +530,27 @@ where
             };
 
             match self.emit_interceptable(event).await {
-                None | Some(InterceptionResponse::Continue) => {
-                    executable_calls.push(call);
-                }
-                Some(InterceptionResponse::Modify { call: modified }) => {
+                Some(InterceptionResponse::ToolCall(InterceptionToolCallResponse::Modify {
+                    call: modified,
+                })) => {
                     executable_calls.push(modified);
                 }
-                Some(InterceptionResponse::Block { reason }) => {
+                Some(InterceptionResponse::ToolCall(InterceptionToolCallResponse::Block {
+                    reason,
+                })) => {
                     log::debug!("Tool call blocked: {}", reason);
                 }
-                Some(InterceptionResponse::Replace { .. }) => {
-                    log::warn!("Replace not supported for ToolCallRequested");
+                Some(InterceptionResponse::ToolCall(
+                    InterceptionToolCallResponse::ReplaceResult { result: _ },
+                )) => {
+                    log::trace!("Replace not supported for ToolCallRequested");
+                }
+                None
+                | Some(InterceptionResponse::ToolCall(InterceptionToolCallResponse::Continue)) => {
+                    executable_calls.push(call);
+                }
+                _ => {
+                    executable_calls.push(call);
                 }
             }
         }
@@ -235,11 +559,50 @@ where
             return self.synthesize_results(parent_id).await;
         }
 
-        let results = self.execute_tools(executable_calls, parent_id).await?;
-
-        let result_node_id = self
-            .create_node(NodeType::ToolResults(results), Some(parent_id.clone()))
+        let results = self
+            .execute_tools(executable_calls.clone(), parent_id)
             .await?;
+
+        let batch_duration = batch_start.elapsed();
+
+        // ensure ordering results in the same way as calls, some providers like mistral, require strictal ordering
+        let results = executable_calls
+            .iter()
+            .filter_map(|call| {
+                results
+                    .iter()
+                    .find(|res| res.name == call.name && res.context == call.context)
+                    .cloned()
+            })
+            .collect::<Vec<FunctionResult>>();
+
+        let mut result_node_id: NodeId = parent_id.clone();
+        // we create a node per result, some providers like mistral, require individual message for each tool call
+        for result in results.iter() {
+            result_node_id = self
+                .create_node(
+                    NodeType::ToolResults(vec![result.clone()]),
+                    // since we create multiple nodes, chain them as parent-child
+                    Some(result_node_id.clone()),
+                )
+                .await?;
+        }
+
+        // Emit tool batch completed
+        self.emit_observable(Event::ToolBatchCompleted {
+            node_id: result_node_id.clone(),
+            results: &results,
+            duration: batch_duration,
+        })
+        .await;
+
+        self.emit_observable(Event::FunctionCallsResults {
+            node_id: result_node_id.clone(),
+            calls: &executable_calls,
+            results: &results,
+        })
+        .await;
+
         self.set_current_node(result_node_id.clone()).await;
         self.update_node_status(&result_node_id, NodeStatus::Completed)
             .await?;
@@ -261,13 +624,51 @@ where
                 let context = self.context.clone();
 
                 async move {
+                    // Emit tool execution started
+                    listeners
+                        .emit_observable(
+                            &Event::ToolExecutionStarted {
+                                node_id: node_id.clone(),
+                                call: &call,
+                            },
+                            &context,
+                        )
+                        .await;
+
                     let res = if let Some(tool) = llm.get_tool(&call.name) {
                         match tool.execute(&call.arguments).await {
                             Ok(r) => r,
-                            Err(e) => serde_json::json!({ "error": e.to_string() }),
+                            Err(e) => {
+                                // Emit tool failed event
+                                listeners
+                                    .emit_observable(
+                                        &Event::ToolCallFailed {
+                                            node_id: node_id.clone(),
+                                            call: &call,
+                                            error: e.to_string(),
+                                        },
+                                        &context,
+                                    )
+                                    .await;
+
+                                serde_json::json!({ "error": e.to_string() })
+                            }
                         }
                     } else {
-                        serde_json::json!({ "error": "Tool not found" })
+                        let error = "Tool not found";
+
+                        listeners
+                            .emit_observable(
+                                &Event::ToolCallFailed {
+                                    node_id: node_id.clone(),
+                                    call: &call,
+                                    error: error.to_string(),
+                                },
+                                &context,
+                            )
+                            .await;
+
+                        serde_json::json!({ "error": error })
                     };
 
                     let result = FunctionResult {
@@ -284,7 +685,9 @@ where
                     };
 
                     match listeners.emit_interceptable(&event, &context).await {
-                        Some(InterceptionResponse::Replace { result: new_result }) => new_result,
+                        Some(InterceptionResponse::ToolCall(
+                            InterceptionToolCallResponse::ReplaceResult { result: new_result },
+                        )) => new_result,
                         _ => result,
                     }
                 }
@@ -297,6 +700,13 @@ where
     async fn synthesize_results(&mut self, parent_id: &NodeId) -> crate::Result<AgentStatus> {
         let node = self.get_node(parent_id).await?;
         if let NodeType::ToolResults(results) = node.node_type {
+            // Emit synthesis started
+            self.emit_observable(Event::ToolResultsSynthesisStarted {
+                node_id: parent_id.clone(),
+                result_count: results.len(),
+            })
+            .await;
+
             let tool_inference = Inference::with_function_results(results);
             self.process_inference_node(parent_id, tool_inference).await
         } else {
@@ -305,19 +715,25 @@ where
     }
 
     /// Emit an observable event to all listeners
-    async fn emit_observable(&self, event: Event) {
+    async fn emit_observable<'a>(&self, event: Event<'a>) {
         self.listeners.emit_observable(&event, &self.context).await;
     }
 
     /// Emit an interceptable event and get response
-    async fn emit_interceptable(&self, event: Event) -> Option<InterceptionResponse> {
+    async fn emit_interceptable<'a>(&self, event: Event<'a>) -> Option<InterceptionResponse> {
         self.listeners
             .emit_interceptable(&event, &self.context)
             .await
     }
 
-    fn transition_to(&mut self, status: AgentStatus) -> AgentStatus {
-        self.status = status;
+    async fn transition_status(&mut self, new_status: AgentStatus) -> AgentStatus {
+        self.emit_observable(Event::AgentStatusChanged {
+            from: self.status.clone(),
+            to: new_status.clone(),
+        })
+        .await;
+
+        self.status = new_status;
         self.status.clone()
     }
 
@@ -326,8 +742,18 @@ where
         node_type: NodeType,
         parent: Option<NodeId>,
     ) -> crate::Result<NodeId> {
-        let node = ExecutionNode::new(node_type, parent);
-        self.context.runtime.read().await.add_node(node).await
+        let node = ExecutionNode::new(node_type.clone(), parent.clone());
+        let node_id = self.context.runtime.read().await.add_node(node).await?;
+
+        // Emit node created event
+        self.emit_observable(Event::NodeCreated {
+            node_id: node_id.clone(),
+            node_type,
+            parent,
+        })
+        .await;
+
+        Ok(node_id)
     }
 
     async fn get_node(&self, id: &NodeId) -> crate::Result<ExecutionNode> {
@@ -351,11 +777,31 @@ where
     }
 
     async fn set_current_node(&self, id: NodeId) {
-        *self.context.current_node.write().await = Some(id);
+        let old = self.context.current_node.read().await.clone();
+        *self.context.current_node.write().await = Some(id.clone());
+
+        // Emit current node changed
+        self.emit_observable(Event::CurrentNodeChanged { from: old, to: id })
+            .await;
     }
 
     async fn update_node_status(&self, id: &NodeId, status: NodeStatus) -> crate::Result<()> {
-        self.context.update_node(id, |n| n.status = status).await
+        let old_status = self.get_node(id).await?.status;
+
+        self.context
+            .update_node(id, |n| n.status = status.clone())
+            .await?;
+
+        if old_status != status {
+            self.emit_observable(Event::NodeStatusChanged {
+                node_id: id.clone(),
+                from: old_status,
+                to: status,
+            })
+            .await;
+        }
+
+        Ok(())
     }
 
     async fn get_last_node(&self) -> Option<NodeId> {
@@ -368,8 +814,24 @@ where
 
     async fn update_conversation_root(&mut self) {
         if let Ok(id) = self.get_current_node_id().await {
-            self.root = Some(id);
+            let previous = self.root.clone();
+            self.root = Some(id.clone());
+
+            self.emit_observable(Event::ConversationRootUpdated {
+                previous,
+                new_root: id,
+            })
+            .await;
         }
+    }
+
+    fn estimate_tokens(&self, history: &[Inference]) -> usize {
+        // Rough estimation: 1 token ≈ 4 characters
+        history
+            .iter()
+            .filter_map(|inf| inf.content.text.as_ref())
+            .map(|text| text.len() / 4)
+            .sum()
     }
 
     pub fn with_config(mut self, config: AgentConfig) -> Self {
@@ -377,15 +839,33 @@ where
         self
     }
 
-    pub fn soft_reset(&mut self) {
+    pub async fn soft_reset(&mut self) {
         self.status = AgentStatus::Idle;
         self.iterations = 0;
+
+        self.emit_observable(Event::AgentReset {
+            hard: false,
+            previous_root: self.root.clone(),
+        })
+        .await;
     }
 
     pub async fn hard_reset(&mut self) -> crate::Result<()> {
-        self.soft_reset();
+        let previous_root = self.root.clone();
+
+        self.status = AgentStatus::Idle;
+        self.iterations = 0;
         self.root = None;
+        self.turn_number = 0;
         *self.context.current_node.write().await = None;
-        self.context.runtime.read().await.clear().await
+        self.context.runtime.read().await.clear().await?;
+
+        self.emit_observable(Event::AgentReset {
+            hard: true,
+            previous_root,
+        })
+        .await;
+
+        Ok(())
     }
 }

@@ -88,6 +88,16 @@ pub trait AnyFunction: Send + Debug + Sync {
     fn to_google(&self) -> gemini_rust::Tool;
 }
 
+impl PartialEq for dyn AnyFunction {
+    fn eq(&self, other: &Self) -> bool {
+        self.name() == other.name()
+            && self.description() == other.description()
+            && self.parameters_schema() == other.parameters_schema()
+    }
+}
+
+impl Eq for dyn AnyFunction {}
+
 impl<A, R> From<FunctionDeclaration<A, R>> for Arc<dyn AnyFunction>
 where
     A: de::DeserializeOwned + ToolArgs + Debug + 'static,

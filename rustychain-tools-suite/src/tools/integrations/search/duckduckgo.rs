@@ -264,19 +264,14 @@ impl DuckDuckGoSearchTool {
                 feedback: Some("Failed to read response text".to_string()),
             })?;
 
-        // Parse results
         let results = self.parse_results(&html, args.max_results)?;
 
-        // SOLO cachear si hay resultados
         if args.use_cache && !results.is_empty() {
             let mut cache = self.cache.lock().await;
             cache.insert(DuckDuckGoSearchCached {
                 params: args.clone(),
                 results: results.clone(),
             });
-            log::trace!("Cached {} results for query: {}", results.len(), args.query);
-        } else if results.is_empty() {
-            log::warn!("No results found for query: {}", args.query);
         }
 
         Ok(DuckDuckGoSearchResponse {

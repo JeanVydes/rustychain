@@ -1,3 +1,4 @@
+use crate::inference;
 use crate::{
     BASE64_ENGINE, FinishReason, Inference, ThinkingMode,
     non_native_function_calling::NonNativeFunctionCallingSchema, prelude::InferenceContent,
@@ -263,6 +264,17 @@ impl
             .as_ref()
             .map(Self::to_native_finish_reason);
 
+        let usage: Option<inference::UsageMetadata> = if let Some(usage) = &response.usage_metadata {
+            Some(inference::UsageMetadata {
+                prompt_tokens: usage.prompt_token_count,
+                thought_tokens: usage.thoughts_token_count,
+                cached_tokens: usage.cached_content_token_count,
+                total_tokens: usage.total_token_count,
+            })
+        } else {
+            None
+        };
+
         Inference {
             model: response.model_version.clone(),
             content: InferenceContent {
@@ -284,7 +296,9 @@ impl
             thoughts,
             function_calls,
             finish_reason,
-            ..Default::default()
+            usage,
+            context: serde_json::to_value(&candidate.content).ok(),
+            function_results: vec![], // Currently, we do not extract function results from Gemini responses.
         }
     }
 

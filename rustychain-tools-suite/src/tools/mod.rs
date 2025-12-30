@@ -16,3 +16,4 @@ pub mod scraping;
 pub mod storage;
 pub mod text;
 pub mod time;
+pub mod coding;
