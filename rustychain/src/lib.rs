@@ -19,9 +19,6 @@ pub mod storage;
 pub mod util;
 pub mod context;
 
-#[cfg(feature = "templates")]
-pub mod templates;
-
 pub use error::*;
 #[cfg(any(feature = "openai", feature = "google"))]
 #[allow(ambiguous_glob_reexports)]

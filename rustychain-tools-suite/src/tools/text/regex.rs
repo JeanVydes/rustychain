@@ -28,6 +28,12 @@ pub struct RegexMatch {
 #[derive(Clone, Default)]
 pub struct RegexTool;
 
+impl RegexTool {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
 #[async_trait::async_trait]
 impl FnExecutor<RegexArgs, serde_json::Value> for RegexTool {
     async fn call(&self, args: RegexArgs) -> rustychain::Result<serde_json::Value> {

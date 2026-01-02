@@ -15,6 +15,12 @@ pub struct DiffArgs {
 #[derive(Clone, Default)]
 pub struct DiffTool;
 
+impl DiffTool {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
 #[async_trait::async_trait]
 impl FnExecutor<DiffArgs, String> for DiffTool {
     async fn call(&self, args: DiffArgs) -> rustychain::Result<String> {

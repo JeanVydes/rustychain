@@ -65,7 +65,6 @@ sqlx = { version = "0.8", features = [
 
 [features]
 default = []
-templates = []
 
 sql = ["dep:sqlx"]
 postgres = ["sql", "sqlx/postgres", "dep:pgvector"]
@@ -96,7 +95,7 @@ providers = ["google", "anthropic", "aws", "openai"]
 experimental = []
 macros = ["rustychain-macros"]
 essential = ["default", "providers", "macros"]
-full = ["essential", "storage", "templates"]
+full = ["essential", "storage"]
 
 [dev-dependencies]
 testcontainers = "0.26.0"

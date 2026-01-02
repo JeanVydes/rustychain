@@ -265,3 +265,9 @@ impl From<Arc<dyn std::any::Any + std::marker::Send + Sync>> for Error {
         Error::Downcast(err)
     }
 }
+
+impl From<String> for Error {
+    fn from(err: String) -> Self {
+        Error::Generic(err)
+    }
+}
